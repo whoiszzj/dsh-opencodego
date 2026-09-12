@@ -41,7 +41,10 @@ scripts/             获取数据 / 探针
 5. **`index.js` 里 `export { x } from './y.js'` 不创建本地绑定**。sync 路由用过 `protocolChainForModel` 却没 import,运行时才炸。`tests/sync.test.mjs` 有静态守卫。
 6. **客户端 `catalogueView` 是字段白名单**,新字段不加进去会被静默丢掉(`synced` 就这么丢过一次)。
 7. **表格渲染里的 `|` 必须转义**,否则 Markdown 把整行切碎。
-8. **`prepare` 脚本不能删**:`lib/` 不进仓库,从 GitHub 安装靠它构建。
+8. **`lib/` 提交在仓库里,而且不要加 `prepare` 脚本**。pnpm 会拦 git 包的构建脚本
+   (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`),加 `prepare` 等于让每个装的人都去配 allowBuilds。
+   代价是 `lib/` 必须和 `src/` 同步 —— **改完 `src/` 一定要 `npm run build` 并一起提交**,
+   提交前跑 `npm run check:lib`(它构建一次再 `git diff --quiet -- lib`,不同步就非零退出)。
 9. **`replaceDiscovered` 默认 `true`** —— 全新安装不加载任何模型。它必须和 `src/config.js` 的 schema 默认值保持一致,否则页面和路由对"启用集合"给出不同答案。
 10. **`data/opencode-go.models.json` 只放 `name` 和 `npm`**。能力数字一律来自同步,放回来就是制造第二个互相打架的数据源。
 
