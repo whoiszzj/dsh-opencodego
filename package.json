@@ -46,7 +46,7 @@
     "probe:session-table": "node scripts/probe-session-headers.mjs --live",
     "probe:session-regression": "node scripts/probe-session-headers.mjs --live --regression",
     "probe:sync": "node scripts/probe-sync.mjs",
-    "prepare": "node scripts/build.mjs"
+    "check:lib": "node scripts/build.mjs && git diff --quiet -- lib"
   },
   "keywords": [
     "dsh",
