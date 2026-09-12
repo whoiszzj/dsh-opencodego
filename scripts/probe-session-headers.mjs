@@ -2,7 +2,7 @@
  * Probe the OpenCode Go relay's session-header whitelist, and keep the
  * `400 MissingSessionID` gate as a re-runnable regression.
  *
- * DESIGN.md §2.4 recorded four observations by hand (`x-opencode-session` and
+ * the design notes §2.4 recorded four observations by hand (`x-opencode-session` and
  * `x-deepseek-harness-session-id` accepted; `x-whatever-session` and `x-foo`
  * refused). This tool turns that table into something reproducible: it sends
  * ONE minimal, non-streaming `/chat/completions` request per candidate header
@@ -65,7 +65,7 @@ const SESSION_HEADER = 'x-opencode-session'
  * @type {{header: string | undefined, label: string, value: string, expect: 'ok' | 'missing' | undefined}[]}
  */
 export const PROBE_CANDIDATES = [
-  // The controls, in the order DESIGN.md §2.4 records them.
+  // The controls, in the order the design notes §2.4 records them.
   { header: undefined, label: '(no session header)', value: '', expect: 'missing' },
   { header: 'x-opencode-session', label: 'x-opencode-session', value: PROBE_VALUE, expect: 'ok' },
   { header: 'x-deepseek-harness-session-id', label: 'x-deepseek-harness-session-id', value: PROBE_VALUE, expect: 'ok' },
@@ -351,7 +351,7 @@ async function main() {
     maxTokens,
     stream: false,
     filter: only ?? null,
-    // The endpoint's behaviour is dynamic (DESIGN.md §2.2.1 makes the same point
+    // The endpoint's behaviour is dynamic (the design notes §2.2.1 makes the same point
     // about protocol acceptance): this document is a snapshot of one moment,
     // not a property of the model or of the relay.
     caveat: 'The relay\'s accepted header list is a measured, dated snapshot; re-run this tool before treating it as current.',

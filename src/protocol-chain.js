@@ -3,7 +3,7 @@
  * switching protocols only while the attempt has produced nothing the caller
  * could have seen.
  *
- * Why this exists (DESIGN.md §2.2 and the phase-2 audit): this gateway's
+ * Why this exists (the design notes §2.2 and the phase-2 audit): this gateway's
  * behaviour is dynamic. `grok-4.6` once failed on both protocols and then
  * answered `200` on `openai-responses` twice in a row; four models the npm rule
  * places on `anthropic-messages` are served no `anthropic-messages` path at all;

@@ -122,7 +122,7 @@ export async function fetchModelDraft({ hooks, request, fetchImpl, attributionHe
     if (id === undefined || id.length === 0 || seen.has(id)) continue
     seen.add(id)
     // Capabilities are deliberately NOT invented here: the endpoint discloses
-    // none (DESIGN.md §2.5) and the models.dev snapshot describes them
+    // none (the design notes §2.5) and the models.dev snapshot describes them
     // separately. The reply is a draft, not a catalogue entry.
     models.push({ id, name: typeof entry.name === 'string' && entry.name.length > 0 ? entry.name : id })
   }

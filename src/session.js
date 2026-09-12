@@ -1,7 +1,7 @@
 /**
  * Session-header resolution for the OpenCode relay.
  *
- * DESIGN.md §2.4/§2.4.1 record the measured relay behaviour: a request WITHOUT
+ * the design notes §2.4/§2.4.1 record the measured relay behaviour: a request WITHOUT
  * a recognised session header answers `400 MissingSessionID`, and the relay
  * accepts only a short whitelist of names (`x-opencode-session`,
  * `x-deepseek-harness-session-id`) — it is NOT "any header will do". §2.3
@@ -14,7 +14,7 @@
  * proved that impossible — every streaming request against the real endpoint is
  * refused with `400 MissingSessionID` — so the header is ACTIVE by default
  * here. Phase 3 hardened it: the accepted-name list is measured and frozen
- * (`scripts/probe-session-headers.mjs`, DESIGN.md §2.4.1), the 400 gate is a
+ * (`scripts/probe-session-headers.mjs`, the design notes §2.4.1), the 400 gate is a
  * re-runnable live regression, and the value policy is documented (§2.4.2:
  * `uuid` is deliberately process-stable, NOT persisted across restarts).
  *
@@ -88,7 +88,7 @@ export function normalizeSessionHeaderName(raw) {
  *     forwarded verbatim (stable across the turns of one conversation AND
  *     across restarts);
  *  2. `uuid` mode: an opaque, process-stable UUID minted once per conversation
- *     (see DESIGN.md §2.4.2 — deliberately NOT persisted across restarts);
+ *     (see the design notes §2.4.2 — deliberately NOT persisted across restarts);
  *  3. no host id at all: a UUID minted once per process, so a hand-built
  *     one-shot call is still routable and every such call shares one opaque
  *     value rather than inventing a new one per request.

@@ -91,7 +91,7 @@ export const PI_AI_REASONING_FIELDS = Object.freeze([
 export const RESPONSES_MIN_OUTPUT_TOKENS = 16
 
 /**
- * The value policies for the relay's session header (DESIGN.md §2.4.2).
+ * The value policies for the relay's session header (the design notes §2.4.2).
  *
  * `session-id` forwards the host's own `GenerateOptions.sessionId`; `uuid`
  * substitutes an opaque, process-stable value. This array is the ONE source of

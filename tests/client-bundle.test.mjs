@@ -8,7 +8,7 @@
  * credential, and route faces the registration built.
  *
  * What it does NOT prove, and says so: the loader serves the bundle, and the
- * shell paints it. Those are covered by `scripts/acceptance/phase4b-run.sh`
+ * shell paints it. Those were covered by the acceptance harness that used to ship here.
  * (curl for the served script + the route payloads) and by the honest
  * "UI not rendered in a real browser" note in PROGRESS.md.
  *

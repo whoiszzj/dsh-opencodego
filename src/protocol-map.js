@@ -3,7 +3,7 @@
  * gateway model id speaks, and — because this endpoint's behaviour is dynamic —
  * which protocols to fall back to when the primary one is refused.
  *
- * Precedence (DESIGN.md §2.2, phase-2 revision):
+ * Precedence (the design notes §2.2, phase-2 revision):
  *
  *   1. `protocolOverrides` from configuration — an operator decision always wins;
  *   2. the models.dev snapshot's `provider.npm` fact, through
@@ -28,7 +28,7 @@ import { FALLBACK_PROTOCOL, SUPPORTED_PROTOCOLS } from './vocab.js'
 export { FALLBACK_PROTOCOL }
 
 /**
- * The models.dev `provider.npm` → pi-ai protocol rule (DESIGN.md §2.2).
+ * The models.dev `provider.npm` → pi-ai protocol rule (the design notes §2.2).
  *
  * A model without its own `provider.npm` inherits the provider-level package,
  * which for `opencode-go` is `@ai-sdk/openai-compatible` → `openai-completions`.

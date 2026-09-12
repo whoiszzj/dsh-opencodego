@@ -17,8 +17,7 @@
     "data/opencode-go.official.json",
     "scripts/build-client.mjs",
     "cordis.patch.yml",
-    "UPDATING.md",
-    "DESIGN.md",
+    "CLAUDE.md",
     "README.md"
   ],
   "dsh": {
@@ -46,8 +45,6 @@
     "probe:session-headers": "node scripts/probe-session-headers.mjs",
     "probe:session-table": "node scripts/probe-session-headers.mjs --live",
     "probe:session-regression": "node scripts/probe-session-headers.mjs --live --regression",
-    "probe:accept-phase4a": "node scripts/build.mjs && bash scripts/acceptance/phase4a-run.sh",
-    "probe:accept-phase4b": "node scripts/build.mjs && bash scripts/acceptance/phase4b-run.sh",
     "probe:sync": "node scripts/probe-sync.mjs",
     "prepare": "node scripts/build.mjs"
   },

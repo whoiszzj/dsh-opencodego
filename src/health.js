@@ -2,7 +2,7 @@
  * Endpoint health: what this gateway said about a model, in a form the operator
  * can act on.
  *
- * DESIGN.md §2.5: the endpoint's `/models` listing discloses no capability or
+ * the design notes §2.5: the endpoint's `/models` listing discloses no capability or
  * availability metadata, yet the listing mixes in models this account or this
  * machine cannot use at all — a Region gate, a data-policy gate, a country
  * block. That fact has to live somewhere. It lives HERE, beside the adapter,

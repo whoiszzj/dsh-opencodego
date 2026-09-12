@@ -1,7 +1,7 @@
 /**
  * The diagnostics a settings page (phase 4b) reads, in one serializable shape.
  *
- * Two facts drive this module's existence (DESIGN.md §2.14):
+ * Two facts drive this module's existence (the design notes §2.14):
  *
  *   1. **The host logger is not a wire.** In this host version a plugin's
  *      `ctx.logger.*` output goes into cordis's in-memory exporter and reaches

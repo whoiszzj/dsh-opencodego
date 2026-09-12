@@ -2,7 +2,7 @@
  * The plugin's model-state file: bundled data, read-only at runtime, NEVER
  * fetched.
  *
- * DESIGN.md §2.6 (revised at 0.6.5): the model truth is TWO layers — the
+ * the design notes §2.6 (revised at 0.6.5): the model truth is TWO layers — the
  * gateway's /models list and this file plus the settings overlay. The file was
  * seeded from models.dev (opencode's catalog) and `scripts/fetch-models-dev.mjs`
  * regenerates it only when an operator runs it on purpose.
@@ -188,7 +188,7 @@ export class ModelSnapshot {
 
   /**
    * Catalogued ids the endpoint did not advertise. The endpoint is the source of
-   * truth for what exists (DESIGN.md §2.5), so these are diagnostics only —
+   * truth for what exists (the design notes §2.5), so these are diagnostics only —
    * they are never enabled.
    * @param {Iterable<string>} endpointIds - ids the endpoint advertised.
    * @returns {string[]} snapshot-only ids, sorted.

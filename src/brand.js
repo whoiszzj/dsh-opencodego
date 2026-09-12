@@ -6,7 +6,7 @@
  * A brand is a compile-time tag over a plain string: at runtime these are
  * identity functions, which is exactly what the host's own `brandString` is.
  * Keeping the helper local means the adapter never depends on a private
- * package path that DESIGN.md §2.9 warns can drift.
+ * package path that the design notes §2.9 warns can drift.
  *
  * @module dsh-opencodego/brand
  */

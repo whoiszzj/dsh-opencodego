@@ -255,7 +255,7 @@ export function apply(ctx, config) {
   })
 
   // The plugin's BUNDLED model-state file (`data/opencode-go.models.json`).
-  // Two data sources and no more (DESIGN.md §2.6, revised at the user's
+  // Two data sources and no more (the design notes §2.6, revised at the user's
   // insistence): ① the gateway's `/models` list decides WHICH models exist,
   // ② this in-package state file plus the settings overlay decides what dsh
   // loads for each. The file was seeded once from the opencode catalog and is
@@ -321,7 +321,7 @@ export function apply(ctx, config) {
     // `sessionHeaderMode` from the resolved connection facts on every request
     // (a settings change therefore takes effect on the next request), while the
     // value map inside the adapter keeps each conversation's relay affinity
-    // stable across unrelated changes. See DESIGN.md §2.4.2.
+    // stable across unrelated changes. See the design notes §2.4.2.
     sessionMode: initial.sessionHeaderMode,
   })
 

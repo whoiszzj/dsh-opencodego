@@ -2,7 +2,7 @@
  * `OpenCodeGoAdapter`: one harness provider route serving every model a gateway
  * advertises, each with its own wire protocol AND its own fallback chain.
  *
- * The defining mechanism is DESIGN.md §2.1: pi-ai reads a model's OWN `api` and
+ * The defining mechanism is the design notes §2.1: pi-ai reads a model's OWN `api` and
  * `baseUrl` (a provider-level base URL is ignored), and `createProvider`
  * dispatches on `model.api` when handed an api MAP. So one route can serve
  * `openai-completions`, `openai-responses`, and `anthropic-messages` at once —
@@ -62,7 +62,7 @@ const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
 /**
  * Lazily import the parts of pi-ai this adapter drives.
  *
- * DESIGN.md §2.9: `@earendil-works/pi-ai` is not a declared dsh dependency — it
+ * the design notes §2.9: `@earendil-works/pi-ai` is not a declared dsh dependency — it
  * is a package the profile resolves (the official `dsh-llm-pi-ai` adapter
  * imports the very same specifiers). Importing lazily keeps the import
  * failure at first use with a named diagnostic instead of at plugin load,
@@ -152,7 +152,7 @@ export class OpenCodeGoAdapter extends LlmAdapter {
      * discard the relay affinity the header exists to provide). The map is
      * keyed by `mode \\u0000 hostId`, so changing `sessionHeaderMode` DOES take
      * effect on the next request while the values already handed out under the
-     * other mode stay stable (DESIGN.md §2.4.2).
+     * other mode stay stable (the design notes §2.4.2).
      */
     this.sessions = new SessionHeaderMap(config.sessionMode)
     /**
@@ -209,7 +209,7 @@ export class OpenCodeGoAdapter extends LlmAdapter {
    * than by patching its result here, because the mapper owns the two
    * invariants a correction must not break: a modality the host cannot carry is
    * still filtered (and recorded), and a configured reasoning level is pinned by
-   * the same rules a catalogued one is (DESIGN.md §2.11). An `extra` declaration
+   * the same rules a catalogued one is (the design notes §2.11). An `extra` declaration
    * is applied before an `models.overrides[id]` correction, so the more specific
    * address wins.
    *
@@ -233,7 +233,7 @@ export class OpenCodeGoAdapter extends LlmAdapter {
   /**
    * Build the pi-ai `Model` descriptor for one gateway model on one protocol.
    *
-   * Both `api` and `baseUrl` are per-model on purpose (DESIGN.md §2.1), and the
+   * Both `api` and `baseUrl` are per-model on purpose (the design notes §2.1), and the
    * descriptor is rebuilt per protocol attempt because its `api` — and therefore
    * the request shape AND the endpoint path pi-ai builds — differs:
    * `anthropic-messages` goes through the Anthropic SDK, which appends
@@ -366,7 +366,7 @@ export class OpenCodeGoAdapter extends LlmAdapter {
       id: this.config.provider,
       name: 'OpenCode Go (native)',
       // Deliberately NO provider-level baseUrl: every model carries its own, so
-      // pi-ai can never apply one route-wide endpoint (DESIGN.md §2.1).
+      // pi-ai can never apply one route-wide endpoint (the design notes §2.1).
       models: models.map((model) => this.#descriptor({
         modelId: model.id,
         name: model.name,
@@ -479,7 +479,7 @@ export class OpenCodeGoAdapter extends LlmAdapter {
       ...adapted.maxTokens === undefined ? {} : { maxTokens: adapted.maxTokens },
       signal: watchdog.signal,
       // Attribution is mandatory; the session header is the relay's routing
-      // requirement (DESIGN.md §2.4) and nothing else rides along — no
+      // requirement (the design notes §2.4) and nothing else rides along — no
       // harness telemetry, no per-user identifiers.
       headers: requestHeaders(attributionHeaders(), options.sessionHeader, sessionValue),
     })

@@ -3,7 +3,7 @@
  *
  *   - request side: harness `GenerateOptions` → a pi-ai request context and a
  *     per-model pi-ai `Model` descriptor (which is where a model's own `api`
- *     and `baseUrl` live — DESIGN.md §2.1);
+ *     and `baseUrl` live — the design notes §2.1);
  *   - response side: pi-ai's assistant event stream → harness `StreamChunk`s.
  *
  * Replay: pi-ai needs a native assistant message in the conversation history

@@ -1,7 +1,7 @@
 /**
  * Lazy, failure-tolerant model catalog for one gateway base.
  *
- * The model SET comes from `GET {baseURL}/models` (DESIGN.md §2.5: the endpoint
+ * The model SET comes from `GET {baseURL}/models` (the design notes §2.5: the endpoint
  * discloses ids and nothing else). Discovery is deliberately forgiving of the
  * ENDPOINT: a failed refresh never empties the list — the last successful
  * snapshot keeps serving and the failure is reported through `diagnostics` and
@@ -113,7 +113,7 @@ export class ModelCatalog {
    * The overlay is a layer, never a replacement: as long as
    * `models.replaceDiscovered` is off, an id the endpoint starts advertising is
    * in this list on the very next call with no configuration change, which is
-   * exactly what DESIGN.md §2.5 requires of an authoritative endpoint.
+   * exactly what the design notes §2.5 requires of an authoritative endpoint.
    *
    * A cold catalogue (nothing discovered yet, e.g. the very first request of a
    * process, or an endpoint outage with no prior success) still serves the

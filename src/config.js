@@ -62,7 +62,7 @@ export const DEFAULT_API_KEY_ENV = 'OPENCODE_GO_API_KEY'
 
 /**
  * Default session header name. ACTIVE by default, not merely accepted:
- * DESIGN.md §2.4 measured that the relay refuses any request without a
+ * the design notes §2.4 measured that the relay refuses any request without a
  * recognised session header (`400 MissingSessionID`), so a plugin that did not
  * send it could never complete a real streaming request.
  */

@@ -1,7 +1,7 @@
 /**
  * Unit tests for protocol resolution and the candidate chain.
  *
- * The npm rule is the authority (DESIGN.md §2.2 as revised in phase 2); the
+ * The npm rule is the authority (the design notes §2.2 as revised in phase 2); the
  * built-in table is only a bootstrap for ids the snapshot does not know; the
  * chain adds measured alternates AFTER the primary and never replaces it.
  */

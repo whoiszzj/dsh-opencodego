@@ -2,7 +2,7 @@
  * The user-facing model SET: endpoint discovery as one input, configuration as
  * an ADDITIVE layer over it (phase 4a).
  *
- * DESIGN.md §2.5 makes the endpoint the source of truth for *which* models
+ * the design notes §2.5 makes the endpoint the source of truth for *which* models
  * exist. That rule does not mean the operator may not have an opinion; it means
  * configuration must not be able to freeze the catalogue. So the model set in
  * effect is
@@ -41,7 +41,7 @@ import { HOST_THINKING_LEVELS, PKG, SUPPORTED_PROTOCOLS } from './vocab.js'
  * The `input` spellings a configuration may name.
  *
  * Deliberately only the modalities the harness message content can carry
- * (DESIGN.md §2.11): a configured `video`/`pdf`/`audio` would declare a
+ * (the design notes §2.11): a configured `video`/`pdf`/`audio` would declare a
  * capability the request path cannot express, so it is refused **by name**
  * rather than silently filtered out of the operator's own configuration.
  */
@@ -185,7 +185,7 @@ export function requireInputModalities(value, where) {
  *
  * `off` is refused by name rather than accepted: pi-ai expresses "do not reason"
  * by omitting the reasoning option, so `off` is not a selectable effort on the
- * wire (DESIGN.md §2.11) — accepting it would create a control that cannot
+ * wire (the design notes §2.11) — accepting it would create a control that cannot
  * change a request.
  * @param {unknown} value - the raw value.
  * @param {string} where - the config path to name in the error.
