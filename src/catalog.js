@@ -30,7 +30,8 @@
 
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { describeTransportError, effectiveModelIds } from './models.js'
-import { mergeSyncedEntry } from './synced.js'
+import { officialCapabilityFragment, officialRecordFor } from './official-baseline.js'
+import { composeEntryFaces } from './synced.js'
 
 // Kept exported from here as well: this module was its historical home, and a
 // consumer outside this repository may import it from the catalog. One
@@ -65,6 +66,9 @@ export class ModelCatalog {
    *   Current connection facts, re-read at each operation.
    * @param {() => Promise<string>} hooks.resolveApiKey - Current bearer token.
    * @param {import('./snapshot.js').ModelSnapshot | undefined} [hooks.snapshot] - the versioned models.dev view.
+   * @param {import('./synced.js').SyncedLayer | undefined} [hooks.synced] - the measured capability layer.
+   * @param {object | undefined} [hooks.official] - the parsed official capability baseline document
+   *   (`data/opencode-go.official.json`); its declared numbers join entries in {@link ModelCatalog#snapshotEntryFor}.
    * @param {(level: 'info' | 'warn' | 'error', message: string) => void} hooks.log
    */
   constructor(hooks) {
@@ -162,13 +166,21 @@ export class ModelCatalog {
    * @returns {object | undefined} the raw snapshot record.
    */
   snapshotEntryFor(modelId) {
-    if (this.hooks.options().snapshotEnabled !== true) {
-      // A synced measurement is evidence, not a catalogued fact, so it survives
-      // disabling the models.dev snapshot: turning that off must not throw away
-      // what the gateway itself told us.
-      return this.hooks.synced?.entryFor(modelId)
-    }
-    return mergeSyncedEntry(this.hooks.snapshot?.entryFor(modelId), this.hooks.synced?.entryFor(modelId))
+    const enabled = this.hooks.options().snapshotEnabled === true
+    // `composeEntryFaces` (synced.js) owns the precedence and the
+    // declaration-face gate; this method only supplies the three faces. The
+    // official baseline's DECLARED numbers join here, at the single merge point
+    // every consumer reads (adapter facts, describeModel, the settings page) —
+    // without this hook the baseline fed only the sync route and every model
+    // ran on conservative defaults.
+    return composeEntryFaces({
+      snapshotEnabled: enabled,
+      snapshotEntry: enabled ? this.hooks.snapshot?.entryFor(modelId) : undefined,
+      officialFragment: enabled
+        ? officialCapabilityFragment(officialRecordFor(this.hooks.official, modelId))
+        : undefined,
+      syncedEntry: this.hooks.synced?.entryFor(modelId),
+    })
   }
 
   /**

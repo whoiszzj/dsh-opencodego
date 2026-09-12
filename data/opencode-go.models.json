@@ -5,7 +5,7 @@
   "provider": "opencode-go",
   "providerNpm": "@ai-sdk/openai-compatible",
   "providerApi": "https://opencode.ai/zen/go/v1",
-  "fetchedAt": "2026-09-12T05:22:51.815Z",
+  "fetchedAt": "2026-09-12T16:39:38.373Z",
   "modelCount": 37,
   "backfill": {
     "deepseek-flash": "deepseek"
@@ -131,9 +131,5 @@
     "qwen3.8-max": {
       "name": "Qwen3.8 Max"
     }
-  },
-  "trimmedTo": [
-    "name",
-    "npm"
-  ]
+  }
 }

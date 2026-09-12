@@ -1113,6 +1113,13 @@ export function catalogueView(payload) {
         // field would otherwise be dropped by this whitelist and every row would
         // look unsynced forever.
         synced: model.synced === true,
+        // The stored verdict's status ('available' / 'delisted' / …): the row's
+        // status dot colors "synced but dead" differently from "synced and
+        // usable" without re-asking the gateway. Whitelisted like `synced` or
+        // the whitelist would silently drop it (invariant #6).
+        syncedStatus: typeof model.syncedStatus === 'string' && model.syncedStatus.length > 0
+          ? model.syncedStatus
+          : undefined,
         defaults: defaultsView(model.defaults),
         effective: isPlainObject(model.effective)
           ? model.effective

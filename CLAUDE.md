@@ -47,6 +47,7 @@ scripts/             获取数据 / 探针
    提交前跑 `npm run check:lib`(它构建一次再 `git diff --quiet -- lib`,不同步就非零退出)。
 9. **`replaceDiscovered` 默认 `true`** —— 全新安装不加载任何模型。它必须和 `src/config.js` 的 schema 默认值保持一致,否则页面和路由对"启用集合"给出不同答案。
 10. **`data/opencode-go.models.json` 只放 `name` 和 `npm`**。能力数字一律来自同步,放回来就是制造第二个互相打架的数据源。
+11. **官方基线数字只在 `synced.js#composeEntryFaces` 合并**(由 `catalog.snapshotEntryFor` 唯一调用):只合 `contextWindow`/`maxTokens`/`inputModalities` 三个声明类字段,reasoning/protocol/interleavedField 仍归 synced 实测层;`snapshotEnabled: false` 时官方数字随快照面一起关。改这条优先级顺序 = 重新制造 200K 兜底 bug,`tests/official-capability.test.mjs` 钉着。
 
 ## 上游有两个,互相独立
 
@@ -94,6 +95,25 @@ npm pack
 |---|---|
 | `src/client/**` | 覆盖文件即可,`dsh-client-hmr` 每 500ms stat-poll 自动热重载 |
 | `lib/index.js`、`src/*.js`、`data/*.json` | **必须重启 `dsh web`** |
+
+**本地 `link:` 安装需要一层 dev symlink**:pnpm 的 `link:` 只建符号链接、**不装 peer 依赖**,
+而 Node 按 workspace 真实路径解析裸包名,`@deepseek-ai/dsh-llm` 等会找不到
+(启动报 `ERR_MODULE_NOT_FOUND`,整个 profile boot 失败)。修法是插件目录下一份
+**dev-only、已 gitignore 的 `node_modules/`**,把宿主包链到全局 dsh 安装(与宿主同实例):
+
+```bash
+DSH_NM=<全局 dsh 安装>/node_modules   # 例:$(dirname "$(readlink -f "$(which dsh)")")/../node_modules
+mkdir -p node_modules/@deepseek-ai node_modules/@earendil-works
+for p in dsh-llm dsh-timeout dsh-credentials schemastery; do
+  ln -sfn "$DSH_NM/@deepseek-ai/$p" "node_modules/@deepseek-ai/$p"
+done
+ln -sfn "$DSH_NM/@earendil-works/pi-ai" "node_modules/@earendil-works/pi-ai"
+```
+
+注意**动态 `import()` 也要覆盖**:`dsh-credentials` 与 `pi-ai`(含三个 `.lazy` 子路径)
+是运行期按需导入的,静态 `from '…'` 扫描抓不到——漏了就是"启动正常、点某个按钮才
+ERR_MODULE_NOT_FOUND"。补链后无需重启(动态导入按调用解析)。
+`tests/` 不经过这层(它们只 import 无宿主依赖的模块)。
 
 ## 发布
 

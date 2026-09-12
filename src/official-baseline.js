@@ -446,6 +446,44 @@ export function officialRecordFor(baseline, id) {
 }
 
 /**
+ * The DECLARED capability numbers one official record carries, projected into
+ * the snapshot entry's vocabulary — and nothing else.
+ *
+ * This is the bridge between the official baseline and the runtime facts chain
+ * (`ModelCatalog#snapshotEntryFor` is its only consumer): context window, max
+ * output and input modalities are the three facts the README promises to take
+ * from models.dev verbatim, without a request. Everything else stays out on
+ * purpose — `reasoningOptions` / `interleavedField` / `protocol` are MEASURED
+ * facts whose home is the synced layer, and `notes` / `sources` / `lab` /
+ * `slug` / `provider` / resolution metadata are provenance, not capabilities.
+ * Letting them through would silently re-introduce the "declared and measured
+ * look identical" confusion this plugin exists to prevent.
+ *
+ * The vocabulary translation is deliberate: an official record spells modalities
+ * `input` (as models.dev does), while a snapshot entry spells them
+ * `inputModalities` (what `mapInputModalities` reads). Raw modality strings are
+ * kept unfiltered — filtering to what this build supports is the mapper's job.
+ *
+ * @param {object | undefined} record - one official baseline record.
+ * @returns {object | undefined} the fragment, or undefined when it would be empty.
+ */
+export function officialCapabilityFragment(record) {
+  if (record === null || typeof record !== 'object') return undefined
+  const fragment = {}
+  if (Number.isSafeInteger(record.contextWindow) && record.contextWindow > 0) {
+    fragment.contextWindow = record.contextWindow
+  }
+  if (Number.isSafeInteger(record.maxTokens) && record.maxTokens > 0) {
+    fragment.maxTokens = record.maxTokens
+  }
+  const modalities = Array.isArray(record.input)
+    ? record.input.filter((entry) => typeof entry === 'string' && entry.length > 0)
+    : []
+  if (modalities.length > 0) fragment.inputModalities = modalities
+  return Object.keys(fragment).length === 0 ? undefined : fragment
+}
+
+/**
  * Wrap a baseline document for storage, stamping provenance.
  * @param {Record<string, object>} models - records keyed by model id.
  * @param {object} provenance - where the data came from.

@@ -651,7 +651,10 @@ test('the model list shows every active model WITH its official facts, and no da
   assert.ok(page.control('model.alpha.toggle') !== undefined)
   assert.ok(page.control('model.hand.toggle') !== undefined)
   assert.equal(page.control('model.retired.toggle'), undefined, 'a stopped model has no row at all')
-  assert.match(page.text, /已自定义/u)
+  // No per-row "已自定义" badge: which row carries an override is visible in the
+  // row's own expanded fields, and a badge on every row was noise the operator
+  // asked to have removed.
+  assert.ok(!page.text.includes('已自定义'), 'no row wears a customized badge')
   // The OFFICIAL facts ride the row: no expanding, no blank fields.
   const chips = page.find((node) => node.props?.['data-ocg-chips'] === 'alpha')
   assert.equal(chips.length, 1, 'the row renders exactly one capability-chip line')
@@ -1129,19 +1132,28 @@ test('信息同步 asks the gateway about every enabled model, one at a time, an
   assert.equal(syncCalls.length, 2, 'one sync request per enabled model')
   assert.deepEqual(syncCalls.map((call) => JSON.parse(call.options.body).id), ['alpha', 'beta'])
 
-  // The verdict lands on the row it belongs to.
-  const ok = page.find((node) => node.props?.['data-ocg-sync'] === 'alpha')
-  assert.equal(ok.length, 1, 'the working model gets a verdict line')
-  assert.match(texts(ok[0]).join(' '), /可用/u)
-  assert.match(texts(ok[0]).join(' '), /上下文 1\.0M/u)
+  // The verdict lands on the row's STATUS DOT, not a verdict box: green for a
+  // model that answered, orange for one the gateway buried — and no box at all.
+  const okDot = page.find((node) => node.props?.['data-ocg-dot'] === 'alpha')
+  assert.equal(okDot.length, 1, 'the working model gets a status dot')
+  assert.match(okDot[0].props.className, /ocg-dot--ok/u)
+  assert.equal(page.find((node) => node.props?.['data-ocg-sync'] !== undefined).length, 0, 'no verdict box any more')
 
-  const dead = page.find((node) => node.props?.['data-ocg-sync'] === 'beta')
-  assert.equal(dead.length, 1, 'the dead model gets a verdict line too')
+  const deadDot = page.find((node) => node.props?.['data-ocg-dot'] === 'beta')
+  assert.equal(deadDot.length, 1, 'the dead model gets a status dot too')
+  assert.match(deadDot[0].props.className, /ocg-dot--warn/u)
+  // A dead model still says so in ONE line (no box), and names a replacement.
+  const dead = page.find((node) => node.props?.['data-ocg-dead'] === 'beta')
+  assert.equal(dead.length, 1)
   const deadText = texts(dead[0]).join(' ')
   assert.match(deadText, /已下架/u)
   assert.match(deadText, /Model is unavailable/u)
   // …and it points somewhere that works, instead of only complaining.
   assert.match(deadText, /建议换用 alpha/u)
+  // A row that just answered the gateway must not simultaneously claim it has
+  // never been asked: the verdict supersedes the "能力信息还没取过" hint.
+  assert.equal(page.find((node) => node.props?.['data-ocg-unsynced'] === 'alpha').length, 0)
+  assert.equal(page.find((node) => node.props?.['data-ocg-unsynced'] === 'beta').length, 0)
   page.restore()
 })
 
@@ -1156,5 +1168,9 @@ test('a model that has never been synced shows NO capability chips, and says why
   const notice = page.find((node) => node.props?.['data-ocg-unsynced'] === 'fresh')
   assert.equal(notice.length, 1, 'and it must say why it is empty')
   assert.match(texts(notice[0]).join(' '), /信息同步/u)
+  // The row's dot reads red until something has been measured.
+  const dot = page.find((node) => node.props?.['data-ocg-dot'] === 'fresh')
+  assert.equal(dot.length, 1)
+  assert.match(dot[0].props.className, /ocg-dot--bad/u)
   page.restore()
 })

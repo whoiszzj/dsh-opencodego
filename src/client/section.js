@@ -28,11 +28,20 @@
  *   - "添加模型" registers one id the list does not show, and activates it on
  *     the spot.
  *
- * Removing a model (the row's ×) commits too. What the page never shows: the
- * words 目录/端点/手写/已排除/冻结, the `replaceDiscovered` switch, or any hint
- * that a model list is "customized" — those are storage mechanics, not
- * operator decisions. Expanding a row still edits per-model overrides, and the
- * normal 保存 (or the next act) commits them.
+ * Removing a model (the row's trash icon) commits too. What the page never
+ * shows: the words 目录/端点/手写/已排除/冻结/已自定义, the `replaceDiscovered`
+ * switch, or any per-row badge claiming a row is "customized" — those are
+ * storage mechanics, not operator decisions, and a badge on every row is noise
+ * that tells the operator nothing they cannot see by expanding the row.
+ * Expanding a row still edits per-model overrides, and the normal 保存 (or the
+ * next act) commits them.
+ *
+ * The visual language is the official settings page's (the Models section of
+ * `@deepseek-ai/dsh-client-ui-settings-models`): the same alias tokens, the same
+ * radii and button geometry (36px pills, 28px row pills, 28px icon buttons,
+ * 16px cards over a 12px module panel), the same chevron-`details` collapse for
+ * advanced settings. One stylesheet, injected as a fiber-scoped <style> element,
+ * because the loader serves no plugin CSS.
  *
  * @module dsh-opencodego/client/section
  */
@@ -97,126 +106,226 @@ import {
   SUPPORTED_PROTOCOLS,
 } from './vocab.js'
 
-/** One stylesheet, injected as a fiber-scoped <style> element: the loader serves no plugin CSS. */
+/**
+ * One stylesheet, injected as a fiber-scoped <style> element: the loader serves
+ * no plugin CSS. Every value here is lifted from the official settings Models
+ * section (`ModelsSection.module.css` of `dsh-client-ui-settings-models`) so the
+ * page reads as part of the shell instead of beside it.
+ */
 const SECTION_CSS = `
-.ocg-section { display: flex; flex-direction: column; gap: 16px; font-size: 13px; }
-.ocg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ocg-title { font-size: 14px; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.ocg-sub { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
-.ocg-field { display: flex; flex-direction: column; gap: 4px; }
-.ocg-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-.ocg-row > .ocg-field { flex: 1 1 200px; }
-.ocg-label { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
-.ocg-input {
-  box-sizing: border-box; width: 100%; padding: 6px 10px; border-radius: 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);
-  font: inherit; font-size: 13px;
+.ocg-section { max-width: 720px; color: var(--dsw-alias-label-primary); flex-direction: column; gap: 12px; display: flex; }
+.ocg-title { color: var(--dsw-alias-label-primary); margin: 0; font-size: 16px; font-weight: 500; line-height: 24px; }
+.ocg-intro { color: var(--dsw-alias-label-tertiary); margin: 0; font-size: 14px; line-height: 22px; }
+.ocg-notice { margin: 0; font-size: 12px; line-height: 18px; white-space: pre-wrap; word-break: break-word; }
+.ocg-notice--ok { color: var(--dsw-alias-state-success-primary); }
+.ocg-notice--warn { color: var(--dsw-alias-state-warn-label); }
+.ocg-notice--error { color: var(--dsw-alias-state-error-primary); }
+.ocg-card { border: .5px solid var(--dsw-alias-border-l4); border-radius: 16px; flex-direction: column; gap: 12px; padding: 12px 14px; display: flex; }
+.ocg-card-head { align-items: center; gap: 10px; display: flex; }
+.ocg-identity { align-items: center; gap: 6px; min-width: 0; display: inline-flex; }
+.ocg-name { color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 500; line-height: 22px; }
+.ocg-dot { box-sizing: border-box; border-radius: 50%; flex: none; width: 8px; height: 8px; display: inline-block; }
+.ocg-dot--ok { background: var(--dsw-alias-state-success-primary); }
+.ocg-dot--warn { background: var(--dsw-alias-state-warning-primary); }
+.ocg-dot--bad { background: var(--dsw-alias-state-error-primary); }
+.ocg-head-actions { align-items: center; gap: 4px; margin-left: auto; display: inline-flex; }
+.ocg-btn {
+  box-sizing: border-box; height: 36px; font: inherit; cursor: pointer; border: none; border-radius: 18px;
+  justify-content: center; align-items: center; gap: 4px; padding: 0 14px; font-size: 14px; line-height: 22px; display: inline-flex;
 }
-.ocg-input:focus { outline: none; border-color: var(--dsw-alias-brand-primary); }
-.ocg-input:disabled { opacity: .6; }
-.ocg-input--bad { border-color: var(--dsw-alias-state-error-primary); }
-.ocg-hint { font-size: 12px; color: var(--dsw-alias-label-tertiary); }
-.ocg-error { font-size: 12px; color: var(--dsw-alias-state-error-primary); }
-.ocg-ok { font-size: 12px; color: var(--dsw-alias-label-secondary); }
-.ocg-button {
-  padding: 6px 12px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
-  border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-primary);
+.ocg-btn--primary { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); }
+.ocg-btn--primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
+.ocg-btn--secondary { border: .5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); background: 0 0; }
+.ocg-btn--secondary:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-solid); }
+.ocg-btn:disabled { opacity: .4; cursor: default; }
+.ocg-head-actions .ocg-btn { border-radius: 14px; height: 28px; padding: 0 10px; font-size: 12px; line-height: 18px; }
+.ocg-btn:focus-visible, .ocg-link:focus-visible, .ocg-icon:focus-visible,
+.ocg-details-summary:focus-visible, .ocg-chip-btn:focus-visible, .ocg-add-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); outline: none;
 }
-.ocg-button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
-.ocg-button:disabled { opacity: .4; cursor: default; }
-.ocg-button--primary { border-color: transparent; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); }
-.ocg-button--danger { border-color: var(--dsw-alias-border-l2); color: var(--dsw-alias-state-error-primary); }
+.ocg-editor { background: var(--dsw-alias-bg-module-platform); border-radius: 12px; flex-direction: column; gap: 14px; padding: 14px 16px; display: flex; }
+.ocg-field { flex-direction: column; gap: 6px; display: flex; }
+.ocg-field-label { color: var(--dsw-alias-label-secondary); align-items: center; gap: 10px; font-size: 12px; font-weight: 500; line-height: 18px; display: inline-flex; }
 .ocg-link {
-  padding: 2px 4px; border: none; background: transparent; cursor: pointer; font: inherit; font-size: 12px;
-  color: var(--dsw-alias-brand-primary);
+  box-sizing: border-box; height: 28px; color: var(--dsw-alias-label-tertiary); font: inherit; cursor: pointer;
+  background: 0 0; border: none; border-radius: 14px; align-items: center; padding: 0 10px; font-size: 12px; line-height: 18px; display: inline-flex;
 }
+.ocg-link:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
 .ocg-link:disabled { opacity: .4; cursor: default; }
 .ocg-link--danger { color: var(--dsw-alias-state-error-primary); }
-.ocg-card {
-  border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 10px;
-  display: flex; flex-direction: column; gap: 10px;
+.ocg-link--danger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
+.ocg-hint { color: var(--dsw-alias-label-tertiary); margin: 0; font-size: 12px; line-height: 18px; }
+.ocg-error { color: var(--dsw-alias-state-error-primary); margin: 0; font-size: 12px; line-height: 18px; }
+.ocg-credline { align-items: center; justify-content: space-between; gap: 10px; display: flex; }
+.ocg-details { border-top: .5px solid var(--dsw-alias-border-l2); padding-top: 10px; }
+.ocg-details-summary {
+  cursor: pointer; width: fit-content; color: var(--dsw-alias-label-secondary); border-radius: 6px; align-items: center;
+  gap: 6px; margin-left: -4px; padding: 2px 4px; font-size: 12px; font-weight: 500; line-height: 18px; list-style: none; display: flex;
 }
-.ocg-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.ocg-legend { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
-.ocg-group { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--dsw-alias-border-l2); padding-top: 10px; }
-.ocg-switch { display: flex; align-items: flex-start; gap: 8px; }
-.ocg-switch input { margin-top: 2px; }
-.ocg-banner {
-  border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 10px;
-  font-size: 12px; white-space: pre-wrap; word-break: break-word;
+.ocg-details-summary::-webkit-details-marker { display: none; }
+.ocg-details-summary:before {
+  content: ""; border-bottom: 1.5px solid; border-right: 1.5px solid; width: 5px; height: 5px;
+  transition: transform .12s; transform: rotate(-45deg) translate(-1px, -1px);
 }
-.ocg-banner--error { color: var(--dsw-alias-state-error-primary); }
-.ocg-banner--warn { color: var(--dsw-alias-state-warning-primary); }
-.ocg-banner--ok { color: var(--dsw-alias-label-secondary); }
-.ocg-warn-box {
-  border: 1px solid var(--dsw-alias-state-warning-primary); border-radius: 8px; padding: 8px 10px;
-  font-size: 12px; color: var(--dsw-alias-state-warning-primary);
-}
-.ocg-model-list { display: flex; flex-direction: column; gap: 6px; }
-.ocg-model-entry { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
-.ocg-model-row { display: flex; gap: 6px; align-items: center; }
-.ocg-model-row .ocg-input { flex: 1 1 auto; }
-.ocg-model-id { flex: 1 1 220px; font-family: var(--dsw-font-mono, monospace); font-size: 12px; word-break: break-all; }
-.ocg-model-name { font-weight: 600; color: var(--dsw-alias-label-primary); }
-.ocg-model-advanced { display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--dsw-alias-border-l2); padding-top: 8px; }
+.ocg-details[open] > .ocg-details-summary:before { transform: rotate(45deg) translate(-1px, -1px); }
+.ocg-details-summary:hover { color: var(--dsw-alias-label-primary); }
+.ocg-details-body { flex-direction: column; gap: 12px; padding-top: 12px; display: flex; }
+.ocg-catalog { border-top: .5px solid var(--dsw-alias-border-l2); flex-direction: column; gap: 10px; padding-top: 12px; display: flex; }
+.ocg-catalog-head { justify-content: space-between; align-items: flex-start; gap: 12px; display: flex; }
+.ocg-catalog-heading { flex-direction: column; gap: 2px; display: flex; }
+.ocg-catalog-title { color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 500; line-height: 18px; }
+.ocg-catalog-meta { color: var(--dsw-alias-label-tertiary); margin: 0; font-size: 12px; line-height: 18px; }
+.ocg-catalog-actions { align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; display: inline-flex; }
+.ocg-model-list { flex-direction: column; gap: 8px; display: flex; }
+.ocg-model-entry { border: .5px solid var(--dsw-alias-border-l4); border-radius: 10px; padding: 6px; }
+.ocg-model-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto; align-items: center; gap: 6px; display: grid; }
+.ocg-model-name-cell { color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 500; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+.ocg-model-id-cell { color: var(--dsw-alias-label-tertiary); font-family: var(--ds-font-family-code, monospace); font-size: 12px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
 .ocg-icon {
-  flex: 0 0 auto; width: 26px; height: 26px; line-height: 1; border-radius: 6px; cursor: pointer;
-  border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-secondary);
+  box-sizing: border-box; width: 28px; height: 28px; color: var(--dsw-alias-label-tertiary); cursor: pointer;
+  background: 0 0; border: none; border-radius: 6px; justify-content: center; align-items: center; display: inline-flex;
 }
-.ocg-icon:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
-.ocg-icon:disabled { opacity: .4; cursor: default; }
-.ocg-tag {
-  font-size: 11px; padding: 1px 6px; border-radius: 10px;
-  border: 1px solid var(--dsw-alias-border-l2); color: var(--dsw-alias-label-tertiary);
-}
-.ocg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-/* The verdict is TEXT, not a row of flex items: as separate flex items the
-   headline and the detail wrapped independently, so a long detail pushed itself
-   onto its own line and the box grew — the same content in a different shape,
-   which is what made the boxes look inconsistent. As a text flow every box has
-   the same padding and wraps the same way. */
-.ocg-sync { display: block; font-size: 12px; line-height: 1.5; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l2); }
-.ocg-sync--ok { border-color: var(--dsw-alias-brand-primary); }
-.ocg-sync--bad { border-color: var(--dsw-alias-label-error, #d33); }
-.ocg-sync--warn { border-color: var(--dsw-alias-label-warn, #b80); }
-.ocg-sync-headline { font-weight: 600; margin-right: 6px; }
-.ocg-sync-detail { color: var(--dsw-alias-label-secondary); }
-.ocg-sync-note { display: block; color: var(--dsw-alias-label-tertiary); }
-.ocg-chip {
-  font-size: 11px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 1px 8px;
-  background: transparent; color: var(--dsw-alias-label-secondary);
-}
-.ocg-chip[data-tone="proto"] { color: var(--dsw-alias-brand-primary); border-color: var(--dsw-alias-brand-primary); }
+.ocg-icon:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.ocg-icon:disabled { cursor: default; opacity: .4; }
+.ocg-icon--danger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
+.ocg-chips { flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 4px 2px; display: flex; }
+.ocg-chip { border: .5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-secondary); border-radius: 4px; flex: none; padding: 1px 6px; font-size: 11px; line-height: 16px; }
+.ocg-chip[data-tone="proto"] { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-border-l4); font-weight: 500; }
 .ocg-chip[data-tone="dim"] { color: var(--dsw-alias-label-dimmed); }
-.ocg-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.ocg-table th, .ocg-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--dsw-alias-border-l2); vertical-align: top; }
-.ocg-log { max-height: 240px; overflow: auto; font-family: var(--dsw-font-mono, monospace); font-size: 11px; white-space: pre-wrap; }
-.ocg-chip-btn { font-size: 11px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 1px 8px; cursor: pointer; background: transparent; color: var(--dsw-alias-label-secondary); }
+.ocg-unsynced { color: var(--dsw-alias-label-tertiary); margin: 0; font-size: 12px; line-height: 18px; padding: 4px 4px 2px; }
+.ocg-model-idwrap { align-items: center; gap: 6px; min-width: 0; display: flex; }
+.ocg-dead { padding: 0 4px; }
+.ocg-model-advanced { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; padding: 8px 4px 2px; display: grid; }
+.ocg-model-field { flex-direction: column; gap: 4px; display: flex; }
+.ocg-model-field--wide { grid-column: 1 / -1; }
+.ocg-model-field-label { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.ocg-model-empty { color: var(--dsw-alias-label-tertiary); margin: 0; font-size: 12px; line-height: 18px; border: 1px dashed var(--dsw-alias-border-l3); text-align: center; border-radius: 8px; padding: 12px; }
+.ocg-adder { gap: 8px; align-items: center; display: flex; }
+.ocg-adder .ocg-input { flex: 1 1 auto; }
+.ocg-add-hint { padding: 0 2px; }
+.ocg-add-btn {
+  box-sizing: border-box; border: .5px solid var(--dsw-alias-border-l3); height: 28px; color: var(--dsw-alias-label-primary);
+  font: inherit; cursor: pointer; background: 0 0; border-radius: 14px; align-self: flex-start; align-items: center; gap: 4px;
+  padding: 0 10px; font-size: 12px; line-height: 18px; display: inline-flex;
+}
+.ocg-add-btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.ocg-add-btn:disabled { opacity: .4; cursor: default; }
+.ocg-input {
+  box-sizing: border-box; border: .5px solid var(--dsw-alias-border-l4); width: 100%; height: 32px; font: inherit;
+  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); border-radius: 8px; padding: 0 10px;
+  font-size: 14px; line-height: 22px;
+}
+select.ocg-input { cursor: pointer; max-width: 240px; }
+.ocg-input:focus { border-color: var(--dsw-alias-brand-primary); outline: none; }
+.ocg-input::placeholder { color: var(--dsw-alias-label-dimmed); }
+.ocg-input:disabled { opacity: .6; cursor: default; }
+.ocg-input--bad { border-color: var(--dsw-alias-state-error-primary); }
+.ocg-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 12px center; background-repeat: no-repeat; background-size: 12px 12px; padding-right: 32px;
+}
+.ocg-switchrow { align-items: flex-start; gap: 8px; cursor: pointer; display: flex; }
+.ocg-switch {
+  appearance: none; box-sizing: border-box; margin: 3px 0 0; border: none; background: var(--dsw-alias-border-l3);
+  border-radius: 8px; flex: none; width: 28px; height: 16px; position: relative; cursor: pointer; transition: background .12s;
+}
+.ocg-switch:checked { background: var(--dsw-alias-brand-primary); }
+.ocg-switch:after {
+  content: ""; position: absolute; top: 2px; left: 2px; border-radius: 50%; width: 12px; height: 12px;
+  background: var(--dsw-alias-label-primary-foreground); transition: transform .12s;
+}
+.ocg-switch:checked:after { transform: translateX(12px); }
+.ocg-switch:disabled { opacity: .4; cursor: default; }
+.ocg-switch:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); outline: none; }
+.ocg-switchrow-text { flex-direction: column; gap: 2px; display: flex; }
+.ocg-switchrow-label { color: var(--dsw-alias-label-primary); font-size: 12px; font-weight: 500; line-height: 18px; }
+.ocg-chip-btn {
+  box-sizing: border-box; height: 24px; border: .5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-secondary);
+  font: inherit; cursor: pointer; background: 0 0; border-radius: 12px; justify-content: center; align-items: center;
+  padding: 0 10px; font-size: 12px; line-height: 22px; display: inline-flex;
+}
+.ocg-chip-btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
 .ocg-chip-btn[data-on="1"] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
-.ocg-dialog {
-  position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .35);
+.ocg-chip-btn:disabled { opacity: .4; cursor: default; }
+.ocg-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 18px; }
+.ocg-table th, .ocg-table td { text-align: left; padding: 4px 8px; border-bottom: .5px solid var(--dsw-alias-border-l2); vertical-align: top; }
+.ocg-table th { color: var(--dsw-alias-label-tertiary); font-weight: 500; white-space: nowrap; }
+.ocg-table td { color: var(--dsw-alias-label-secondary); word-break: break-word; }
+.ocg-subhead { color: var(--dsw-alias-label-secondary); margin: 0; font-size: 12px; font-weight: 500; line-height: 18px; }
+.ocg-log {
+  max-height: 240px; overflow: auto; font-family: var(--ds-font-family-code, monospace); font-size: 11px; line-height: 16px;
+  white-space: pre-wrap; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-1); border-radius: 8px; padding: 8px 10px;
 }
+.ocg-dialog { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .35); }
 .ocg-dialog-body {
-  width: min(640px, 92vw); max-height: 84vh; overflow: auto; border-radius: 10px; padding: 12px;
-  border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1);
-  display: flex; flex-direction: column; gap: 10px;
+  box-sizing: border-box; width: min(520px, 92vw); max-height: 84vh; overflow: auto; border-radius: 16px; padding: 16px;
+  border: .5px solid var(--dsw-alias-border-l4); background: var(--dsw-alias-bg-layer-1); flex-direction: column; gap: 12px;
+  display: flex; box-shadow: 0 16px 48px rgba(0, 0, 0, .16);
 }
-.ocg-dialog-title { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.ocg-candidates { display: flex; flex-direction: column; gap: 4px; max-height: 52vh; overflow: auto; }
-.ocg-candidate { display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; }
-.ocg-candidate--on { border-color: var(--dsw-alias-brand-primary); }
-.ocg-candidate-top { display: flex; align-items: center; gap: 8px; }
-.ocg-candidate-name { font-size: 12px; color: var(--dsw-alias-label-tertiary); }
-.ocg-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.ocg-dialog-title { color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 500; line-height: 22px; }
+.ocg-dialog-foot { justify-content: flex-end; gap: 8px; display: flex; }
+.ocg-candidate-toolbar { align-items: center; gap: 8px; display: flex; }
+.ocg-candidate-toolbar .ocg-input { flex: 240px; min-width: 0; }
+.ocg-candidate-list { flex-direction: column; gap: 2px; max-height: 320px; margin: 0; padding: 0; list-style: none; display: flex; overflow-y: auto; }
+.ocg-candidate { border-radius: 6px; }
+.ocg-candidate--on { background: var(--dsw-alias-interactive-bg-hover); }
+.ocg-candidate-label { cursor: pointer; align-items: center; gap: 8px; padding: 6px 8px; display: flex; }
+.ocg-candidate-label:hover { background: var(--dsw-alias-interactive-bg-hover); border-radius: 6px; }
+.ocg-candidate input[type="checkbox"] { accent-color: var(--dsw-alias-brand-primary); }
+.ocg-candidate-id { font-family: var(--ds-font-family-code, monospace); overflow-wrap: anywhere; flex: auto; font-size: 13px; }
+.ocg-candidate-name { color: var(--dsw-alias-label-tertiary); flex: none; font-size: 12px; line-height: 18px; }
+.ocg-candidate-empty { color: var(--dsw-alias-label-secondary); text-align: center; margin: 24px 0; font-size: 13px; line-height: 20px; }
+@media (prefers-reduced-motion: reduce) { .ocg-details-summary:before, .ocg-switch, .ocg-switch:after { transition: none; } }
 `
 
-/** One text input with its label, hint and inline error. */
+/** The official 14px chevron, rotated a quarter turn while its row is open. */
+function IconChevron(props) {
+  return React.createElement('svg', {
+    width: '14',
+    height: '14',
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    'aria-hidden': 'true',
+    style: { transform: props.open === true ? 'rotate(90deg)' : undefined, transition: 'transform 120ms ease' },
+  }, React.createElement('path', {
+    d: 'M6 3.5L10.5 8L6 12.5',
+    stroke: 'currentColor',
+    strokeWidth: '1.5',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  }))
+}
+
+/** The official 14px trash glyph for a row's remove act. */
+function IconTrash() {
+  return React.createElement('svg', {
+    width: '14',
+    height: '14',
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    'aria-hidden': 'true',
+  }, React.createElement('path', {
+    d: 'M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4',
+    stroke: 'currentColor',
+    strokeWidth: '1.3',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  }))
+}
+
+/**
+ * One text input with its label, hint and inline error.
+ *
+ * `variant` picks the type scale: top-level fields sit on the module panel with
+ * the 12/18 secondary label, while a row's expanded attributes use the smaller
+ * tertiary label of the official model-advanced grid.
+ */
 function TextField(props) {
-  const { label, value, onChange, hint, error, placeholder, disabled, type, field } = props
-  return React.createElement('label', { className: 'ocg-field' },
-    React.createElement('span', { className: 'ocg-label' }, label),
+  const { label, value, onChange, hint, error, placeholder, disabled, type, field, variant } = props
+  const model = variant === 'model'
+  return React.createElement('label', { className: model ? 'ocg-model-field' : 'ocg-field' },
+    React.createElement('span', { className: model ? 'ocg-model-field-label' : 'ocg-field-label' }, label),
     React.createElement('input', {
       className: error === undefined ? 'ocg-input' : 'ocg-input ocg-input--bad',
       'data-ocg-field': field,
@@ -228,35 +337,18 @@ function TextField(props) {
       onChange: (event) => onChange(event.target.value),
     }),
     hint === undefined ? null : React.createElement('span', { className: 'ocg-hint' }, hint),
-    error === undefined ? null : React.createElement('span', { className: 'ocg-error' }, error),
-  )
-}
-
-/** One checkbox row with a label and an optional explanatory line. */
-function CheckRow(props) {
-  const { label, checked, onChange, hint, disabled, danger, field } = props
-  return React.createElement('label', { className: 'ocg-switch' },
-    React.createElement('input', {
-      type: 'checkbox',
-      checked: checked === true,
-      disabled,
-      'data-ocg-field': field,
-      onChange: (event) => onChange(event.target.checked),
-    }),
-    React.createElement('span', null,
-      React.createElement('span', { className: danger === true ? 'ocg-label ocg-error' : 'ocg-label' }, label),
-      hint === undefined ? null : React.createElement('div', { className: 'ocg-hint' }, hint),
-    ),
+    error === undefined ? null : React.createElement('p', { className: 'ocg-error' }, error),
   )
 }
 
 /** One dropdown over a fixed vocabulary. */
 function SelectField(props) {
-  const { label, value, options, onChange, hint, error, allowBlank, blankLabel, disabled, field } = props
-  return React.createElement('label', { className: 'ocg-field' },
-    React.createElement('span', { className: 'ocg-label' }, label),
+  const { label, value, options, onChange, hint, error, allowBlank, blankLabel, disabled, field, variant } = props
+  const model = variant === 'model'
+  return React.createElement('label', { className: model ? 'ocg-model-field' : 'ocg-field' },
+    React.createElement('span', { className: model ? 'ocg-model-field-label' : 'ocg-field-label' }, label),
     React.createElement('select', {
-      className: error === undefined ? 'ocg-input' : 'ocg-input ocg-input--bad',
+      className: error === undefined ? 'ocg-input ocg-select' : 'ocg-input ocg-select ocg-input--bad',
       'data-ocg-field': field,
       value: value ?? '',
       disabled,
@@ -266,17 +358,55 @@ function SelectField(props) {
       options.map((option) => React.createElement('option', { key: option, value: option }, option)),
     ),
     hint === undefined ? null : React.createElement('span', { className: 'ocg-hint' }, hint),
-    error === undefined ? null : React.createElement('span', { className: 'ocg-error' }, error),
+    error === undefined ? null : React.createElement('p', { className: 'ocg-error' }, error),
   )
 }
 
-/** One multi-select chip row over a small vocabulary. */
+/** One switch row: the official toggle shape over a native checkbox. */
+function SwitchRow(props) {
+  const { label, checked, onChange, hint, disabled, field, variant } = props
+  const model = variant === 'model'
+  const text = React.createElement('span', { className: 'ocg-switchrow-text' },
+    React.createElement('span', { className: 'ocg-switchrow-label' }, label),
+    hint === undefined ? null : React.createElement('span', { className: 'ocg-hint' }, hint),
+  )
+  if (model === true) {
+    return React.createElement('label', { className: 'ocg-switchrow', style: { alignItems: 'center' } },
+      React.createElement('input', {
+        type: 'checkbox',
+        className: 'ocg-switch',
+        style: { margin: 0 },
+        checked: checked === true,
+        disabled,
+        'data-ocg-field': field,
+        onChange: (event) => onChange(event.target.checked),
+      }),
+      text,
+    )
+  }
+  return React.createElement('label', { className: 'ocg-switchrow' },
+    React.createElement('input', {
+      type: 'checkbox',
+      className: 'ocg-switch',
+      checked: checked === true,
+      disabled,
+      'data-ocg-field': field,
+      onChange: (event) => onChange(event.target.checked),
+    }),
+    text,
+  )
+}
+
+/** One multi-select chip row over a small vocabulary (a row's expanded grid). */
 function ChipField(props) {
-  const { label, values, options, onChange, hint, error, disabled, field } = props
+  const { label, values, options, onChange, hint, error, disabled, field, wide } = props
   const list = Array.isArray(values) ? values : []
-  return React.createElement('div', { className: 'ocg-field', 'data-ocg-field': field },
-    React.createElement('span', { className: 'ocg-label' }, label),
-    React.createElement('div', { className: 'ocg-chips' },
+  return React.createElement('div', {
+    className: wide === true ? 'ocg-model-field ocg-model-field--wide' : 'ocg-model-field',
+    'data-ocg-field': field,
+  },
+    React.createElement('span', { className: 'ocg-model-field-label' }, label),
+    React.createElement('div', { className: 'ocg-chips', style: { padding: 0 } },
       options.map((option) => React.createElement('button', {
         type: 'button',
         key: option,
@@ -288,7 +418,7 @@ function ChipField(props) {
       }, option)),
     ),
     hint === undefined ? null : React.createElement('span', { className: 'ocg-hint' }, hint),
-    error === undefined ? null : React.createElement('span', { className: 'ocg-error' }, error),
+    error === undefined ? null : React.createElement('p', { className: 'ocg-error' }, error),
   )
 }
 
@@ -298,8 +428,8 @@ function ChipField(props) {
  */
 function CapacityField(props) {
   const { label, value, onChange, error, placeholder, disabled, field } = props
-  return React.createElement('label', { className: 'ocg-field' },
-    React.createElement('span', { className: 'ocg-label' }, label),
+  return React.createElement('label', { className: 'ocg-model-field' },
+    React.createElement('span', { className: 'ocg-model-field-label' }, label),
     React.createElement('input', {
       className: error === undefined ? 'ocg-input' : 'ocg-input ocg-input--bad',
       inputMode: 'numeric',
@@ -313,7 +443,7 @@ function CapacityField(props) {
         else if (/^\d+$/u.test(text)) onChange(Number(text))
       },
     }),
-    error === undefined ? null : React.createElement('span', { className: 'ocg-error' }, error),
+    error === undefined ? null : React.createElement('p', { className: 'ocg-error' }, error),
   )
 }
 
@@ -704,7 +834,6 @@ export function OpenCodeGoSection(props) {
     commitModels(next, `已添加并启用 ${id}。`)
   }
 
-  /** Fetch and render the diagnostics payload. */
   /**
    * Sync every ENABLED model, one at a time, showing real progress.
    *
@@ -739,6 +868,10 @@ export function OpenCodeGoSection(props) {
     }
     syncAbort.current = undefined
     setSync((state) => ({ ...state, busy: false, current: undefined, stopped: syncStop.current }))
+    // The route persisted each verdict as it answered, so the stored synced
+    // layer moved under us: refresh the catalogue so every row swaps the
+    // "能力信息还没取过" hint for the saved capability chips without a reload.
+    void loadCatalogue(false)
   }
 
   const showDiagnostics = () => {
@@ -753,12 +886,17 @@ export function OpenCodeGoSection(props) {
   }
 
   if (status === 'loading') {
-    return React.createElement('div', { className: 'ocg-section' }, React.createElement('p', { className: 'ocg-sub' }, '正在读取设置…'))
+    return React.createElement('div', { className: 'ocg-section' },
+      React.createElement('style', null, SECTION_CSS),
+      React.createElement('p', { className: 'ocg-intro' }, '正在读取设置…'),
+    )
   }
   if (status !== 'ready' || draft === undefined) {
     return React.createElement('div', { className: 'ocg-section' },
-      React.createElement('div', { className: 'ocg-banner ocg-banner--error' }, loadError ?? '设置不可用'),
-      React.createElement('div', null, React.createElement('button', { type: 'button', className: 'ocg-button', onClick: () => void load() }, '重试')),
+      React.createElement('style', null, SECTION_CSS),
+      React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, loadError ?? '设置不可用'),
+      React.createElement('div', null,
+        React.createElement('button', { type: 'button', className: 'ocg-btn ocg-btn--secondary', onClick: () => void load() }, '重试')),
     )
   }
 
@@ -767,6 +905,10 @@ export function OpenCodeGoSection(props) {
   const reference = typeof draft.apiKeyEnv === 'string' && draft.apiKeyEnv.trim().length > 0
     ? draft.apiKeyEnv.trim()
     : DEFAULT_API_KEY_ENV
+  const enabledCount = rows.filter((row) => row.id.length > 0).length
+  const providerName = typeof draft.displayName === 'string' && draft.displayName.trim().length > 0
+    ? draft.displayName.trim()
+    : 'OpenCode Go'
 
   /**
    * The inline error for one control.
@@ -803,33 +945,62 @@ export function OpenCodeGoSection(props) {
     }
   }
 
-  /** Whether one row carries any operator claim (an override or a declaration). */
-  const customized = (row) => row.extra !== undefined || row.override !== undefined
-
   const modelRows = rows.map((row) => {
     const cells = cellsOf(row)
     const open = expanded.has(row.key)
     const official = byId.get(row.id)
+    const verdictResult = sync.results[row.id]
+    const verdict = verdictResult === undefined ? undefined : describeSync(verdictResult)
+    // One dot carries the whole sync story: green = measured and usable,
+    // orange = measured and dead/gated, red = never measured. The stored
+    // verdict's status keeps the color honest across reloads; a verdict taken
+    // THIS session is fresher than anything stored.
+    const dotTone = verdict !== undefined
+      ? (verdict.tone === 'ok' ? 'ok' : 'warn')
+      : official?.synced === true
+        ? (official.syncedStatus === undefined || official.syncedStatus === 'available' ? 'ok' : 'warn')
+        : 'bad'
+    const dotTitle = dotTone === 'ok'
+      ? '已同步：可用'
+      : dotTone === 'warn'
+        ? `已同步：${verdict !== undefined ? verdict.headline : official.syncedStatus}`
+        : '未同步'
     const rowField = (field) => `model.${row.id.length > 0 ? row.id : row.key}.${field}`
     const patchRow = (changes) => applyDirectory(patchDirectoryRow(draft, row, changes))
-    const removable = writable && !committing
+    const editable = writable && !committing
     return React.createElement('div', { className: 'ocg-model-entry', key: row.key, 'data-ocg-model': row.id },
       React.createElement('div', { className: 'ocg-model-row' },
+        React.createElement('span', { className: 'ocg-model-idwrap' },
+          React.createElement('span', {
+            className: `ocg-dot ocg-dot--${dotTone}`,
+            role: 'img',
+            'aria-label': dotTitle,
+            title: dotTitle,
+            'data-ocg-dot': row.id,
+          }),
+          row.extra !== undefined
+            ? React.createElement('input', {
+              className: 'ocg-input',
+              type: 'text',
+              placeholder: '模型 ID',
+              value: cells.id,
+              disabled: !editable,
+              'data-ocg-field': rowField('id'),
+              onChange: (event) => patchRow({ id: event.target.value }),
+            })
+            : React.createElement('span', { className: 'ocg-model-name-cell', 'data-ocg-field': rowField('id') }, row.name !== row.id ? row.name : row.id),
+        ),
         row.extra !== undefined
           ? React.createElement('input', {
             className: 'ocg-input',
             type: 'text',
-            placeholder: '模型 ID',
-            value: cells.id,
-            disabled: !removable,
-            'data-ocg-field': rowField('id'),
-            onChange: (event) => patchRow({ id: event.target.value }),
+            placeholder: '显示名称（可选）',
+            value: cells.name ?? '',
+            disabled: !editable,
+            'data-ocg-field': rowField('name'),
+            onChange: (event) => patchRow({ name: event.target.value }),
           })
-          : React.createElement('span', { className: 'ocg-model-id', 'data-ocg-field': rowField('id') },
-            React.createElement('span', { className: 'ocg-model-name' }, row.name !== row.id ? row.name : ''),
-            React.createElement('span', null, row.name !== row.id ? ` （${row.id}）` : row.id),
-          ),
-        customized(row) ? React.createElement('span', { className: 'ocg-tag' }, '已自定义') : null,
+          : React.createElement('span', { className: 'ocg-model-id-cell' }, row.name !== row.id ? row.id : ''),
         React.createElement('button', {
           type: 'button',
           className: 'ocg-icon',
@@ -837,91 +1008,83 @@ export function OpenCodeGoSection(props) {
           'aria-expanded': open ? 'true' : 'false',
           'data-ocg-field': rowField('toggle'),
           onClick: () => toggleExpanded(row.key),
-        }, open ? '▾' : '▸'),
+        }, React.createElement(IconChevron, { open })),
         React.createElement('button', {
           type: 'button',
-          className: 'ocg-icon',
+          className: 'ocg-icon ocg-icon--danger',
           title: '停用这个模型',
-          disabled: !removable,
+          disabled: !editable,
           'data-ocg-field': rowField('remove'),
           onClick: () => commitModels(
             removeDirectoryRow(draft, row),
             row.advertised === true ? `已停用 ${row.id} 并保存。` : `已移除 ${row.id} 并保存。`,
           ),
-        }, '×'),
+        }, React.createElement(IconTrash)),
       ),
       // Capability facts appear ONLY after a sync has measured them. Before
       // that the row says so instead of showing the bundled snapshot's numbers:
       // a declared number and a measured one look identical once rendered, and
       // the whole point of the sync is that the operator can tell them apart.
+      // A verdict taken THIS session already answers the question, so the
+      // "not synced yet" hint must not contradict the verdict box below it.
       official?.synced === true
         ? CapabilityChips({ model: official })
-        : React.createElement('div', { className: 'ocg-hint', 'data-ocg-unsynced': String(row.id ?? '') }, SYNC_NOT_SYNCED),
-      // The synced verdict for this row, once one has been taken. A model that
-      // is gone says so loudly and NAMES a replacement: the point of the sync is
-      // to stop an operator quietly using an id that no longer answers.
-      (() => {
-        const result = sync.results[row.id]
-        if (result === undefined) return null
-        const view = describeSync(result)
-        if (view === undefined) return null
+        : verdictResult === undefined
+          ? React.createElement('p', { className: 'ocg-unsynced', 'data-ocg-unsynced': String(row.id ?? '') }, SYNC_NOT_SYNCED)
+          : null,
+      // A usable verdict needs no box: the chips above already carry the facts
+      // and the dot says "measured". Only a DEAD model gets a line — ONE line,
+      // no box — because quietly keeping a delisted id enabled is exactly what
+      // the sync exists to prevent, and the line names a replacement.
+      verdict === undefined || verdict.tone === 'ok' ? null : (() => {
         const replacement = replacementSuggestions(rows, sync.results)[row.id]
-        return React.createElement('div', {
-          className: `ocg-sync ocg-sync--${view.tone}`,
-          'data-ocg-sync': row.id,
+        return React.createElement('p', {
+          className: 'ocg-notice ocg-notice--error ocg-dead',
+          'data-ocg-dead': row.id,
         },
-          React.createElement('span', { className: 'ocg-sync-headline' }, view.headline),
-          React.createElement('span', { className: 'ocg-sync-detail' }, view.detail),
-          view.note === undefined ? null : React.createElement('span', { className: 'ocg-sync-note' }, view.note),
-          replacement === undefined ? null : React.createElement('span', { className: 'ocg-sync-note' }, `建议换用 ${replacement} —— 该模型现在不可用。`),
+          `${verdict.headline}：${verdict.detail}`,
+          replacement === undefined ? null : `　建议换用 ${replacement} —— 该模型现在不可用。`,
         )
       })(),
       open ? React.createElement('div', { className: 'ocg-model-advanced' },
-        React.createElement('div', { className: 'ocg-row' },
-          React.createElement(SelectField, {
-            label: 'API 协议', value: cells.api, options: SUPPORTED_PROTOCOLS, allowBlank: true,
-            blankLabel: `跟随规则${official?.protocol === undefined ? '' : `（当前 ${official.protocol}）`}`,
-            disabled: !removable,
-            field: rowField('api'),
-            error: cellError(row, 'api'),
-            onChange: (value) => patchRow({ api: value }),
-          }),
-          React.createElement(CapacityField, {
-            label: '上下文窗口', value: cells.contextWindow, disabled: !removable,
-            placeholder: capacityPlaceholder(official?.effective?.contextWindow, '默认'),
-            field: rowField('contextWindow'),
-            error: cellError(row, 'contextWindow'),
-            onChange: (value) => patchRow({ contextWindow: value === '' ? undefined : value }),
-          }),
-          React.createElement(CapacityField, {
-            label: '最大输出 token', value: cells.maxTokens, disabled: !removable,
-            placeholder: capacityPlaceholder(official?.effective?.maxTokens, '默认'),
-            field: rowField('maxTokens'),
-            error: cellError(row, 'maxTokens'),
-            onChange: (value) => patchRow({ maxTokens: value === '' ? undefined : value }),
-          }),
-        ),
+        React.createElement(SelectField, {
+          label: 'API 协议', value: cells.api, options: SUPPORTED_PROTOCOLS, allowBlank: true, variant: 'model',
+          blankLabel: `跟随规则${official?.protocol === undefined ? '' : `（当前 ${official.protocol}）`}`,
+          disabled: !editable,
+          field: rowField('api'),
+          error: cellError(row, 'api'),
+          onChange: (value) => patchRow({ api: value }),
+        }),
+        React.createElement(CapacityField, {
+          label: '上下文窗口', value: cells.contextWindow, disabled: !editable,
+          placeholder: capacityPlaceholder(official?.effective?.contextWindow, '默认'),
+          field: rowField('contextWindow'),
+          error: cellError(row, 'contextWindow'),
+          onChange: (value) => patchRow({ contextWindow: value === '' ? undefined : value }),
+        }),
+        React.createElement(CapacityField, {
+          label: '最大输出 token', value: cells.maxTokens, disabled: !editable,
+          placeholder: capacityPlaceholder(official?.effective?.maxTokens, '默认'),
+          field: rowField('maxTokens'),
+          error: cellError(row, 'maxTokens'),
+          onChange: (value) => patchRow({ maxTokens: value === '' ? undefined : value }),
+        }),
         React.createElement(ChipField, {
-          label: '输入模态（留空=用默认）', values: cells.input, options: CONFIGURABLE_INPUT_MODALITIES, disabled: !removable,
+          label: '输入模态（留空=用默认）', values: cells.input, options: CONFIGURABLE_INPUT_MODALITIES, disabled: !editable, wide: true,
           hint: modalityPlaceholder(official?.effective),
           field: rowField('input'),
           error: cellError(row, 'input'),
           onChange: (value) => patchRow({ input: value }),
         }),
-        row.extra !== undefined ? React.createElement(TextField, {
-          label: '显示名称（可选）', value: cells.name, disabled: !removable,
-          field: rowField('name'),
-          onChange: (value) => patchRow({ name: value }),
-        }) : null,
-        React.createElement(CheckRow, {
-          label: '断言该模型会思考（reasoning）', checked: cells.reasoning === true, disabled: !removable,
+        React.createElement(SwitchRow, {
+          label: '断言该模型会思考（reasoning）', checked: cells.reasoning === true, disabled: !editable, variant: 'model',
           hint: `默认：${official?.effective?.reasoning === true ? '会思考' : '不思考'}`,
           field: rowField('reasoning'),
           onChange: (value) => patchRow({ reasoning: value }),
         }),
         React.createElement(ChipField, {
           label: 'reasoningEfforts（留空=默认档位）', values: cells.reasoningEfforts,
-          options: CONFIGURABLE_THINKING_LEVELS, disabled: !removable,
+          options: CONFIGURABLE_THINKING_LEVELS, disabled: !editable, wide: true,
           hint: Array.isArray(official?.effective?.reasoningEfforts) && official.effective.reasoningEfforts.length > 0
             ? `默认：${official.effective.reasoningEfforts.join(' / ')}`
             : '默认：无（off 用“不思考”表达）',
@@ -946,8 +1109,8 @@ export function OpenCodeGoSection(props) {
   const pickerDialog = picker.candidates === undefined ? null : React.createElement('div', { className: 'ocg-dialog' },
     React.createElement('div', { className: 'ocg-dialog-body' },
       React.createElement('div', { className: 'ocg-dialog-title' }, FETCH_TITLE),
-      React.createElement('div', { className: 'ocg-hint' }, FETCH_DESCRIPTION),
-      React.createElement('div', { className: 'ocg-row' },
+      React.createElement('p', { className: 'ocg-hint' }, FETCH_DESCRIPTION),
+      React.createElement('div', { className: 'ocg-candidate-toolbar' },
         React.createElement('input', {
           className: 'ocg-input',
           type: 'search',
@@ -958,7 +1121,7 @@ export function OpenCodeGoSection(props) {
         }),
         React.createElement('button', {
           type: 'button',
-          className: 'ocg-button',
+          className: 'ocg-link',
           disabled: visibleCandidates.length === 0,
           'data-ocg-field': 'fetch.toggleAll',
           onClick: () => setPicker((state) => {
@@ -972,15 +1135,16 @@ export function OpenCodeGoSection(props) {
           }),
         }, allVisiblePicked ? FETCH_DESELECT_ALL : FETCH_SELECT_ALL),
       ),
-      visibleCandidates.length === 0
-        ? React.createElement('div', { className: 'ocg-hint' }, FETCH_NO_MATCHES)
-        : React.createElement('div', { className: 'ocg-candidates' }, visibleCandidates.map((candidate) => {
+      picker.error === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, picker.error),
+      picker.error !== undefined ? null : visibleCandidates.length === 0
+        ? React.createElement('p', { className: 'ocg-candidate-empty' }, FETCH_NO_MATCHES)
+        : React.createElement('div', { className: 'ocg-candidate-list' }, visibleCandidates.map((candidate) => {
           const on = (picker.wanted ?? []).includes(candidate.id)
           return React.createElement('label', {
             className: on ? 'ocg-candidate ocg-candidate--on' : 'ocg-candidate',
             key: candidate.id,
           },
-            React.createElement('div', { className: 'ocg-candidate-top' },
+            React.createElement('span', { className: 'ocg-candidate-label' },
               React.createElement('input', {
                 type: 'checkbox',
                 checked: on,
@@ -995,7 +1159,7 @@ export function OpenCodeGoSection(props) {
                   }
                 }),
               }),
-              React.createElement('span', { className: 'ocg-model-id' }, candidate.id),
+              React.createElement('span', { className: 'ocg-candidate-id' }, candidate.id),
               candidate.name === candidate.id ? null : React.createElement('span', { className: 'ocg-candidate-name' }, candidate.name),
             ),
           )
@@ -1003,13 +1167,13 @@ export function OpenCodeGoSection(props) {
       React.createElement('div', { className: 'ocg-dialog-foot' },
         React.createElement('button', {
           type: 'button',
-          className: 'ocg-button',
+          className: 'ocg-btn ocg-btn--secondary',
           'data-ocg-field': 'fetch.cancel',
           onClick: () => setPicker({ busy: false, candidates: undefined, error: undefined, wanted: [], query: '' }),
         }, '取消'),
         React.createElement('button', {
           type: 'button',
-          className: 'ocg-button ocg-button--primary',
+          className: 'ocg-btn ocg-btn--primary',
           disabled: committing,
           'data-ocg-field': 'fetch.apply',
           onClick: () => applySelection(),
@@ -1018,11 +1182,8 @@ export function OpenCodeGoSection(props) {
     ),
   )
 
-  const diagnosticsBody = diagnostics.view === undefined ? null : React.createElement('div', { className: 'ocg-card' },
-    React.createElement('div', { className: 'ocg-card-head' },
-      React.createElement('span', { className: 'ocg-legend' }, '诊断（运行期实际生效的事实）'),
-      React.createElement('button', { type: 'button', className: 'ocg-button', disabled: diagnostics.busy, onClick: () => showDiagnostics() }, '刷新'),
-    ),
+  const diagnosticsBody = diagnostics.view === undefined ? null : React.createElement('div', { className: 'ocg-editor' },
+    React.createElement('p', { className: 'ocg-hint' }, '数据来自宿主插件自己的日志环与健康分类（不新开日志来源）；载荷里没有凭据值。'),
     React.createElement('table', { className: 'ocg-table' },
       React.createElement('tbody', null,
         React.createElement('tr', null,
@@ -1047,197 +1208,238 @@ export function OpenCodeGoSection(props) {
         ),
       ),
     ),
-    diagnostics.view.summaryLines.length === 0 ? null : React.createElement('div', { className: 'ocg-hint' }, diagnostics.view.summaryLines.join('\n')),
-    React.createElement('div', null,
-      React.createElement('div', { className: 'ocg-legend' }, `端点健康（${String(diagnostics.view.health.length)} 行）`),
-      diagnostics.view.health.length === 0
-        ? React.createElement('p', { className: 'ocg-sub' }, '还没有健康记录。')
-        : React.createElement('table', { className: 'ocg-table' },
-          React.createElement('thead', null, React.createElement('tr', null,
-            React.createElement('th', null, 'model'), React.createElement('th', null, 'category'),
-            React.createElement('th', null, 'protocol'), React.createElement('th', null, 'status'), React.createElement('th', null, 'action'),
-          )),
-          React.createElement('tbody', null, diagnostics.view.health.map((row, index) => React.createElement('tr', { key: `${String(row.modelId)}-${String(index)}` },
-            React.createElement('td', null, String(row.modelId)),
-            React.createElement('td', null, String(row.category)),
-            React.createElement('td', null, String(row.protocol ?? '')),
-            React.createElement('td', null, row.status === undefined ? '' : String(row.status)),
-            React.createElement('td', null, String(row.action ?? '')),
-          ))),
-        ),
-    ),
-    React.createElement('div', null,
-      React.createElement('div', { className: 'ocg-legend' }, `日志环（${String(diagnostics.view.log.length)} 行，warn ${String(diagnostics.view.warnings.length)} 条）`),
-      React.createElement('div', { className: 'ocg-log' }, diagnostics.view.log.length === 0
-        ? '（空）'
-        : diagnostics.view.log.map((line, index) => `${new Date(line.at ?? 0).toISOString()} [${String(line.level)}] ${String(line.message)}`).join('\n')),
-    ),
+    diagnostics.view.summaryLines.length === 0 ? null : React.createElement('p', { className: 'ocg-hint' }, diagnostics.view.summaryLines.join('\n')),
+    React.createElement('p', { className: 'ocg-subhead' }, `端点健康（${String(diagnostics.view.health.length)} 行）`),
+    diagnostics.view.health.length === 0
+      ? React.createElement('p', { className: 'ocg-hint' }, '还没有健康记录。')
+      : React.createElement('table', { className: 'ocg-table' },
+        React.createElement('thead', null, React.createElement('tr', null,
+          React.createElement('th', null, 'model'), React.createElement('th', null, 'category'),
+          React.createElement('th', null, 'protocol'), React.createElement('th', null, 'status'), React.createElement('th', null, 'action'),
+        )),
+        React.createElement('tbody', null, diagnostics.view.health.map((row, index) => React.createElement('tr', { key: `${String(row.modelId)}-${String(index)}` },
+          React.createElement('td', null, String(row.modelId)),
+          React.createElement('td', null, String(row.category)),
+          React.createElement('td', null, String(row.protocol ?? '')),
+          React.createElement('td', null, row.status === undefined ? '' : String(row.status)),
+          React.createElement('td', null, String(row.action ?? '')),
+        ))),
+      ),
+    React.createElement('p', { className: 'ocg-subhead' }, `日志环（${String(diagnostics.view.log.length)} 行，warn ${String(diagnostics.view.warnings.length)} 条）`),
+    React.createElement('div', { className: 'ocg-log' }, diagnostics.view.log.length === 0
+      ? '（空）'
+      : diagnostics.view.log.map((line, index) => `${new Date(line.at ?? 0).toISOString()} [${String(line.level)}] ${String(line.message)}`).join('\n')),
   )
 
   return React.createElement('div', { className: 'ocg-section' },
     React.createElement('style', null, SECTION_CSS),
-    React.createElement('div', { className: 'ocg-head' },
-      React.createElement('div', null,
-        React.createElement('div', { className: 'ocg-title' }, 'OpenCode Go'),
-      ),
-      React.createElement('div', { className: 'ocg-row' },
-        React.createElement('button', { type: 'button', className: 'ocg-button', 'data-ocg-field': 'action.reload', disabled: !writable || saving, onClick: () => void load() }, '重新载入'),
-        React.createElement('button', { type: 'button', className: 'ocg-button ocg-button--primary', 'data-ocg-field': 'action.save', disabled: !writable || saving || committing || (!dirty && !staged), onClick: save }, saving ? '保存中…' : '保存'),
-      ),
-    ),
-
-    banner === undefined ? null : React.createElement('div', { className: `ocg-banner ocg-banner--${banner.kind === 'ok' ? 'ok' : 'error'}` }, banner.text),
+    banner === undefined ? null : React.createElement('p', { className: `ocg-notice ocg-notice--${banner.kind === 'ok' ? 'ok' : 'error'}` }, banner.text),
     conflict === true
-      ? React.createElement('div', null, React.createElement('button', { type: 'button', className: 'ocg-button', onClick: () => void load() }, '重新载入最新设置'))
+      ? React.createElement('div', null, React.createElement('button', { type: 'button', className: 'ocg-btn ocg-btn--secondary', onClick: () => void load() }, '重新载入最新设置'))
       : null,
-    legacyKey === true ? React.createElement('div', { className: 'ocg-warn-box' }, LEGACY_API_KEY_WARNING) : null,
-    errors.models === undefined ? null : React.createElement('div', { className: 'ocg-banner ocg-banner--error' }, errors.models),
-    errors.modelsExtra === undefined ? null : React.createElement('div', { className: 'ocg-banner ocg-banner--error' }, errors.modelsExtra),
-    errors.modelsOverrides === undefined ? null : React.createElement('div', { className: 'ocg-banner ocg-banner--error' }, errors.modelsOverrides),
+    legacyKey === true ? React.createElement('p', { className: 'ocg-notice ocg-notice--warn' }, LEGACY_API_KEY_WARNING) : null,
+    errors.models === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, errors.models),
+    errors.modelsExtra === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, errors.modelsExtra),
+    errors.modelsOverrides === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, errors.modelsOverrides),
 
-    React.createElement('div', { className: 'ocg-card' },
-      React.createElement('div', { className: 'ocg-legend' }, '连接'),
-      React.createElement(TextField, {
-        label: 'API 密钥', value: draft.apiKey, type: 'password', disabled: !writable,
-        field: 'apiKey',
-        placeholder: credential?.configured === true ? '已配置——输入新值可替换' : '输入 API 密钥',
-        hint: API_KEY_HINT,
-        error: errors.apiKey,
-        onChange: (value) => patch('apiKey', value),
-      }),
-      React.createElement('div', { className: 'ocg-card-head' },
-        React.createElement('span', { className: 'ocg-hint', 'data-ocg-field': 'credential.state' }, credentialStateText(credential)),
-        credential?.configured === true
-          ? React.createElement('button', {
-            type: 'button',
-            className: 'ocg-link ocg-link--danger',
-            'data-ocg-field': 'action.clearCredential',
-            disabled: !writable,
-            onClick: () => clearCredential(),
-          }, '清除已存密钥')
-          : null,
-      ),
-      React.createElement('div', { className: 'ocg-group' },
-        React.createElement('div', { className: 'ocg-legend' }, '自定义设置'),
-        React.createElement(TextField, {
-          label: 'API 地址', value: draft.baseURL, disabled: !writable,
-          field: 'baseURL',
-          hint: '网关基址，含 /v1。',
-          error: errors.baseURL,
-          onChange: (value) => patch('baseURL', value),
-        }),
-        React.createElement(TextField, {
-          label: 'displayName（可选）', value: draft.displayName, disabled: !writable,
-          field: 'displayName',
-          error: errors.displayName,
-          onChange: (value) => patch('displayName', value),
-        }),
-      ),
-    ),
+    React.createElement('h2', { className: 'ocg-title' }, 'OpenCode Go'),
+    React.createElement('p', { className: 'ocg-intro' }, modelSourceLine()),
 
     React.createElement('div', { className: 'ocg-card' },
       React.createElement('div', { className: 'ocg-card-head' },
-        React.createElement('span', { className: 'ocg-legend' }, `模型（已启用 ${String(rows.filter((row) => row.id.length > 0).length)} 个）`),
-        React.createElement('div', { className: 'ocg-row' },
+        React.createElement('span', { className: 'ocg-identity' },
+          React.createElement('span', { className: 'ocg-name' }, providerName),
+          credential === undefined ? null : credential.configured === true
+            ? React.createElement('span', {
+              className: 'ocg-dot ocg-dot--ok',
+              role: 'img',
+              'aria-label': '凭据已配置',
+              title: '凭据已配置',
+            })
+            : React.createElement('span', {
+              className: 'ocg-dot ocg-dot--bad',
+              role: 'img',
+              'aria-label': '凭据未配置',
+              title: '凭据未配置',
+            }),
+        ),
+        React.createElement('span', { className: 'ocg-head-actions' },
           React.createElement('button', {
             type: 'button',
-            className: 'ocg-link',
-            'data-ocg-field': 'action.fetch',
-            disabled: picker.busy || committing,
-            onClick: () => openPicker(),
-          }, picker.busy ? '正在询问提供方…' : '获取可用模型'),
+            className: 'ocg-btn ocg-btn--secondary',
+            'data-ocg-field': 'action.reload',
+            disabled: !writable || saving,
+            onClick: () => void load(),
+          }, '重新载入'),
           React.createElement('button', {
             type: 'button',
-            className: 'ocg-link',
-            'data-ocg-field': 'action.sync',
-            disabled: sync.busy || committing || rows.filter((row) => row.id.length > 0).length === 0,
-            onClick: () => { void runSync() },
-          }, sync.busy ? SYNC_BUSY : SYNC_BUTTON),
-          sync.busy !== true ? null : React.createElement('button', {
-            type: 'button',
-            className: 'ocg-link',
-            'data-ocg-field': 'action.syncStop',
-            onClick: () => {
-              syncStop.current = true
-              // Abort the request in flight; the host aborts its own upstream
-              // work when this connection closes.
-              syncAbort.current?.abort()
-            },
-          }, SYNC_STOP),
-          React.createElement('button', {
-            type: 'button',
-            className: 'ocg-link',
-            'data-ocg-field': 'action.toggleAdd',
-            disabled: !writable || committing,
-            onClick: () => setAdder((state) => ({ ...state, open: !state.open })),
-          }, ADD_MODEL_LABEL),
+            className: 'ocg-btn ocg-btn--primary',
+            'data-ocg-field': 'action.save',
+            disabled: !writable || saving || committing || (!dirty && !staged),
+            onClick: save,
+          }, saving ? '保存中…' : '保存'),
         ),
       ),
-      catalogueError === undefined ? null : React.createElement('div', { className: 'ocg-error' }, `模型列表读取失败：${catalogueError}`),
-      refreshNote === undefined ? null : React.createElement('div', { className: 'ocg-hint' }, `向网关刷新模型列表时出错：${refreshNote}`),
-      React.createElement('div', { className: 'ocg-hint' }, modelSourceLine()),
-      syncProgressText(sync, syncClock) === undefined ? null : React.createElement('div', {
-        className: 'ocg-hint', 'data-ocg-sync-progress': '1',
-      }, syncProgressText(sync, syncClock)),
-      sync.error === undefined ? null : React.createElement('div', { className: 'ocg-error' }, `同步出错：${sync.error}`),
-      sync.stopped === true ? React.createElement('div', { className: 'ocg-hint' }, '已停止；已经同步过的模型已经保存。') : null,
-      sync.busy === true ? null : React.createElement('div', { className: 'ocg-hint' }, SYNC_HINT),
-      picker.error === undefined ? null : React.createElement('div', { className: 'ocg-error' }, picker.error),
-      adder.open ? React.createElement('div', { className: 'ocg-row' },
+      React.createElement('div', { className: 'ocg-editor' },
         React.createElement(TextField, {
-          label: ADD_MODEL_LABEL, value: adder.id, disabled: committing,
-          field: 'add.model.id',
-          hint: ADD_MODEL_HINT,
-          onChange: (value) => setAdder((state) => ({ ...state, id: value })),
+          label: 'API 密钥', value: draft.apiKey, type: 'password', disabled: !writable,
+          field: 'apiKey',
+          placeholder: credential?.configured === true ? '已配置——输入新值可替换' : '输入 API 密钥',
+          hint: API_KEY_HINT,
+          error: errors.apiKey,
+          onChange: (value) => patch('apiKey', value),
         }),
-        React.createElement('button', {
-          type: 'button',
-          className: 'ocg-button ocg-button--primary',
-          disabled: committing || adder.id.trim().length === 0,
-          'data-ocg-field': 'action.addModel',
-          onClick: () => addModel(),
-        }, ADD_MODEL_BUTTON),
-      ) : null,
-      rows.length === 0
-        ? React.createElement('p', { className: 'ocg-sub' }, catalogue === undefined ? '正在读取模型列表…' : '还没有启用任何模型。点“获取可用模型”挑几个。')
-        : React.createElement('div', { className: 'ocg-model-list' }, modelRows),
-      pickerDialog,
-    ),
-
-    React.createElement('div', { className: 'ocg-card' },
-      React.createElement('div', { className: 'ocg-legend' }, '会话头'),
-      React.createElement(CheckRow, {
-        label: 'sessionHeaderEnabled — 发送会话头', checked: draft.sessionHeaderEnabled, disabled: !writable,
-        field: 'sessionHeaderEnabled',
-        hint: '中继在没有会话头时回 400 MissingSessionID，所以默认开。',
-        onChange: (value) => patch('sessionHeaderEnabled', value),
-      }),
-      React.createElement(TextField, {
-        label: 'sessionHeader', value: draft.sessionHeader, disabled: !writable || draft.sessionHeaderEnabled === false,
-        field: 'sessionHeader',
-        hint: SESSION_HEADER_HINT,
-        error: errors.sessionHeader,
-        onChange: (value) => patch('sessionHeader', value),
-      }),
-      React.createElement(SelectField, {
-        label: 'sessionHeaderMode', value: draft.sessionHeaderMode, options: SESSION_HEADER_MODES,
-        field: 'sessionHeaderMode',
-        disabled: !writable || draft.sessionHeaderEnabled === false,
-        hint: 'session-id = 转发宿主会话 id；uuid = 每个会话一个不透明值。',
-        error: errors.sessionHeaderMode,
-        onChange: (value) => patch('sessionHeaderMode', value),
-      }),
-    ),
-
-    React.createElement('div', { className: 'ocg-card' },
-      React.createElement('div', { className: 'ocg-legend' }, '诊断'),
-      React.createElement('div', { className: 'ocg-hint' }, '数据来自宿主插件自己的日志环与健康分类（不新开日志来源）；载荷里没有凭据值。'),
-      React.createElement('div', { className: 'ocg-row' },
-        React.createElement('button', { type: 'button', className: 'ocg-button', 'data-ocg-field': 'action.diagnostics', disabled: diagnostics.busy, onClick: () => showDiagnostics() }, diagnostics.busy ? '读取中…' : (diagnostics.open ? '重新读取诊断' : '查看诊断')),
+        React.createElement('div', { className: 'ocg-credline' },
+          React.createElement('span', { className: 'ocg-hint', 'data-ocg-field': 'credential.state' }, credentialStateText(credential)),
+          credential?.configured === true
+            ? React.createElement('button', {
+              type: 'button',
+              className: 'ocg-link ocg-link--danger',
+              'data-ocg-field': 'action.clearCredential',
+              disabled: !writable,
+              onClick: () => clearCredential(),
+            }, '清除已存密钥')
+            : null,
+        ),
+        React.createElement('details', { className: 'ocg-details' },
+          React.createElement('summary', { className: 'ocg-details-summary' }, '自定义设置'),
+          React.createElement('div', { className: 'ocg-details-body' },
+            React.createElement(TextField, {
+              label: 'API 地址', value: draft.baseURL, disabled: !writable,
+              field: 'baseURL',
+              hint: '网关基址，含 /v1。',
+              error: errors.baseURL,
+              onChange: (value) => patch('baseURL', value),
+            }),
+            React.createElement(TextField, {
+              label: 'displayName（可选）', value: draft.displayName, disabled: !writable,
+              field: 'displayName',
+              error: errors.displayName,
+              onChange: (value) => patch('displayName', value),
+            }),
+            React.createElement(SwitchRow, {
+              label: 'sessionHeaderEnabled — 发送会话头', checked: draft.sessionHeaderEnabled, disabled: !writable,
+              field: 'sessionHeaderEnabled',
+              hint: '中继在没有会话头时回 400 MissingSessionID，所以默认开。',
+              onChange: (value) => patch('sessionHeaderEnabled', value),
+            }),
+            React.createElement(TextField, {
+              label: 'sessionHeader', value: draft.sessionHeader, disabled: !writable || draft.sessionHeaderEnabled === false,
+              field: 'sessionHeader',
+              hint: SESSION_HEADER_HINT,
+              error: errors.sessionHeader,
+              onChange: (value) => patch('sessionHeader', value),
+            }),
+            React.createElement(SelectField, {
+              label: 'sessionHeaderMode', value: draft.sessionHeaderMode, options: SESSION_HEADER_MODES,
+              field: 'sessionHeaderMode',
+              disabled: !writable || draft.sessionHeaderEnabled === false,
+              hint: 'session-id = 转发宿主会话 id；uuid = 每个会话一个不透明值。',
+              error: errors.sessionHeaderMode,
+              onChange: (value) => patch('sessionHeaderMode', value),
+            }),
+          ),
+        ),
+        React.createElement('section', { className: 'ocg-catalog' },
+          React.createElement('div', { className: 'ocg-catalog-head' },
+            React.createElement('div', { className: 'ocg-catalog-heading' },
+              React.createElement('span', { className: 'ocg-catalog-title' }, `模型（已启用 ${String(enabledCount)} 个）`),
+              React.createElement('span', { className: 'ocg-catalog-meta' }, SYNC_HINT),
+            ),
+            React.createElement('span', { className: 'ocg-catalog-actions' },
+              React.createElement('button', {
+                type: 'button',
+                className: 'ocg-link',
+                'data-ocg-field': 'action.fetch',
+                disabled: picker.busy || committing,
+                onClick: () => openPicker(),
+              }, picker.busy ? '正在询问提供方…' : '获取可用模型'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'ocg-link',
+                'data-ocg-field': 'action.sync',
+                disabled: sync.busy || committing || enabledCount === 0,
+                onClick: () => { void runSync() },
+              }, sync.busy ? SYNC_BUSY : SYNC_BUTTON),
+              sync.busy !== true ? null : React.createElement('button', {
+                type: 'button',
+                className: 'ocg-link',
+                'data-ocg-field': 'action.syncStop',
+                onClick: () => {
+                  syncStop.current = true
+                  // Abort the request in flight; the host aborts its own upstream
+                  // work when this connection closes.
+                  syncAbort.current?.abort()
+                },
+              }, SYNC_STOP),
+              React.createElement('button', {
+                type: 'button',
+                className: 'ocg-link',
+                'data-ocg-field': 'action.toggleAdd',
+                disabled: !writable || committing,
+                onClick: () => setAdder((state) => ({ ...state, open: !state.open })),
+              }, ADD_MODEL_LABEL),
+            ),
+          ),
+          catalogueError === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, `模型列表读取失败：${catalogueError}`),
+          refreshNote === undefined ? null : React.createElement('p', { className: 'ocg-hint' }, `向网关刷新模型列表时出错：${refreshNote}`),
+          syncProgressText(sync, syncClock) === undefined ? null : React.createElement('p', {
+            className: 'ocg-hint', 'data-ocg-sync-progress': '1',
+          }, syncProgressText(sync, syncClock)),
+          sync.error === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, `同步出错：${sync.error}`),
+          sync.stopped === true ? React.createElement('p', { className: 'ocg-hint' }, '已停止；已经同步过的模型已经保存。') : null,
+          // A discovery failure reads behind the closed dialog only: once the
+          // dialog is open it carries its own notice, so the text never doubles.
+          picker.error === undefined || picker.candidates !== undefined
+            ? null
+            : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, picker.error),
+          adder.open ? React.createElement('div', { className: 'ocg-field' },
+            React.createElement('div', { className: 'ocg-adder' },
+              React.createElement('input', {
+                className: 'ocg-input',
+                type: 'text',
+                placeholder: ADD_MODEL_LABEL,
+                value: adder.id,
+                disabled: committing,
+                'data-ocg-field': 'add.model.id',
+                onChange: (event) => setAdder((state) => ({ ...state, id: event.target.value })),
+              }),
+              React.createElement('button', {
+                type: 'button',
+                className: 'ocg-add-btn',
+                disabled: committing || adder.id.trim().length === 0,
+                'data-ocg-field': 'action.addModel',
+                onClick: () => addModel(),
+              }, ADD_MODEL_BUTTON),
+            ),
+            React.createElement('span', { className: 'ocg-hint ocg-add-hint' }, ADD_MODEL_HINT),
+          ) : null,
+          rows.length === 0
+            ? React.createElement('p', { className: 'ocg-model-empty' }, catalogue === undefined ? '正在读取模型列表…' : '还没有启用任何模型。点“获取可用模型”挑几个。')
+            : React.createElement('div', { className: 'ocg-model-list' }, modelRows),
+        ),
       ),
-      diagnostics.error === undefined ? null : React.createElement('div', { className: 'ocg-error' }, diagnostics.error),
+    ),
+
+    React.createElement('div', { className: 'ocg-card' },
+      React.createElement('div', { className: 'ocg-card-head' },
+        React.createElement('span', { className: 'ocg-identity' },
+          React.createElement('span', { className: 'ocg-name' }, '诊断'),
+        ),
+        React.createElement('span', { className: 'ocg-head-actions' },
+          React.createElement('button', {
+            type: 'button',
+            className: 'ocg-btn ocg-btn--secondary',
+            'data-ocg-field': 'action.diagnostics',
+            disabled: diagnostics.busy,
+            onClick: () => showDiagnostics(),
+          }, diagnostics.busy ? '读取中…' : (diagnostics.open ? '重新读取诊断' : '查看诊断')),
+        ),
+      ),
+      diagnostics.error === undefined ? null : React.createElement('p', { className: 'ocg-notice ocg-notice--error' }, diagnostics.error),
       diagnosticsBody,
     ),
+    pickerDialog,
   )
 }
 
