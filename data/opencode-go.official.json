@@ -1,0 +1,1444 @@
+{
+ "kind": "dsh-opencodego/official-baseline",
+ "modelCount": 36,
+ "models": {
+  "deepseek-flash": {
+   "contextWindow": 1000000,
+   "id": "deepseek-flash",
+   "input": [
+    "text",
+    "image"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "deepseek",
+   "maxTokens": 384000,
+   "notes": [
+    "DeepSeek-V4.1-Flash, served as `deepseek-flash`. The legacy names `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are still accepted, but those models are retired and requests are served by DeepSeek-V4.1-Flash at the Flash price. Reasoning tokens are billed at the output rate (no separate CoT price). Off-peak rates are half of peak; models.dev records the off-peak rate. OpenAI: `thinking.type = enabled|disabled`, `reasoning_effort = low|high|max`. Anthropic: `thinking.type`, `output_config.effort = low|high|max`; budget ignored. Flash maps requested low -> low (unlike Pro). xhigh -> high. https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-09-10) https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-09-10)",
+    "OpenAI Chat is POST `/chat/completions`: `thinking.type = enabled|disabled` and `reasoning_effort = low|high|max`. Flash maps low→low; Pro maps low→high; xhigh maps to high (flash) or max (pro). Anthropic Messages is POST `/anthropic/v1/messages`: `thinking.type` and `output_config.effort = low|high|max`; `thinking.budget_tokens` is ignored. https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-08-02) https://api-docs.deepseek.com/guides/anthropic_api (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.deepseek.com",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "env": [
+     "DEEPSEEK_API_KEY"
+    ],
+    "id": "deepseek"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "deepseek-flash",
+   "sources": {
+    "canonicalModel": "models/deepseek/deepseek-v4.1-flash.toml",
+    "provider": "providers/deepseek/provider.toml",
+    "providerModel": "providers/deepseek/models/deepseek-flash.toml"
+   }
+  },
+  "deepseek-v4-flash": {
+   "contextWindow": 1000000,
+   "id": "deepseek-v4-flash",
+   "input": [
+    "text",
+    "image"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "deepseek",
+   "maxTokens": 384000,
+   "notes": [
+    "Legacy alias. The DeepSeek-V4-Flash model is retired; requests to `deepseek-v4-flash` are still accepted but served by DeepSeek-V4.1-Flash and billed at the Flash price. Toggle: thinking.type = enabled|disabled Effort: reasoning_effort = low|high|max https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-09-10)",
+    "mark as deprecated soon status = \"deprecated\"",
+    "OpenAI Chat is POST `/chat/completions`: `thinking.type = enabled|disabled` and `reasoning_effort = low|high|max`. Flash maps low→low; Pro maps low→high; xhigh maps to high (flash) or max (pro). Anthropic Messages is POST `/anthropic/v1/messages`: `thinking.type` and `output_config.effort = low|high|max`; `thinking.budget_tokens` is ignored. https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-08-02) https://api-docs.deepseek.com/guides/anthropic_api (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.deepseek.com",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "env": [
+     "DEEPSEEK_API_KEY"
+    ],
+    "id": "deepseek"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "deepseek-v4-flash-0731",
+   "sources": {
+    "canonicalModel": "models/deepseek/deepseek-v4.1-flash.toml",
+    "ocg": "providers/opencode-go/models/deepseek-v4-flash.toml",
+    "provider": "providers/deepseek/provider.toml",
+    "providerModel": "providers/deepseek/models/deepseek-v4-flash.toml"
+   }
+  },
+  "deepseek-v4-flash-vision-exp": {
+   "contextWindow": 1000000,
+   "id": "deepseek-v4-flash-vision-exp",
+   "input": [
+    "text",
+    "image"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "deepseek",
+   "maxTokens": 384000,
+   "notes": [
+    "Legacy alias. DeepSeek-V4-Flash-Vision-Exp is retired; requests to `deepseek-v4-flash-vision-exp` are still accepted but served by DeepSeek-V4.1-Flash and billed at the Flash price. Toggle: thinking.type = enabled|disabled Effort: reasoning_effort = low|high|max https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-09-10)",
+    "mark as deprecated soon status = \"deprecated\"",
+    "OpenAI Chat is POST `/chat/completions`: `thinking.type = enabled|disabled` and `reasoning_effort = low|high|max`. Flash maps low→low; Pro maps low→high; xhigh maps to high (flash) or max (pro). Anthropic Messages is POST `/anthropic/v1/messages`: `thinking.type` and `output_config.effort = low|high|max`; `thinking.budget_tokens` is ignored. https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-08-02) https://api-docs.deepseek.com/guides/anthropic_api (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.deepseek.com",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "env": [
+     "DEEPSEEK_API_KEY"
+    ],
+    "id": "deepseek"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "deepseek-v4-flash-vision-exp",
+   "sources": {
+    "canonicalModel": "models/deepseek/deepseek-v4.1-flash.toml",
+    "ocg": "providers/opencode-go/models/deepseek-v4-flash-vision-exp.toml",
+    "provider": "providers/deepseek/provider.toml",
+    "providerModel": "providers/deepseek/models/deepseek-v4-flash-vision-exp.toml"
+   }
+  },
+  "deepseek-v4-pro": {
+   "contextWindow": 1000000,
+   "id": "deepseek-v4-pro",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "deepseek",
+   "maxTokens": 384000,
+   "notes": [
+    "Reasoning tokens are billed at the output rate (no separate CoT price). `completion_tokens_details.reasoning_tokens` is a subset of completion_tokens. https://api-docs.deepseek.com/quick_start/pricing/ (accessed 2026-08-12)",
+    "OpenAI: `thinking.type = enabled|disabled`, `reasoning_effort = high|max`. Anthropic: `thinking.type`, `output_config.effort = high|max`; budget ignored. https://api-docs.deepseek.com/api/create-chat-completion (accessed 2026-06-25)",
+    "OpenAI Chat is POST `/chat/completions`: `thinking.type = enabled|disabled` and `reasoning_effort = low|high|max`. Flash maps low→low; Pro maps low→high; xhigh maps to high (flash) or max (pro). Anthropic Messages is POST `/anthropic/v1/messages`: `thinking.type` and `output_config.effort = low|high|max`; `thinking.budget_tokens` is ignored. https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-08-02) https://api-docs.deepseek.com/guides/anthropic_api (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.deepseek.com",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "env": [
+     "DEEPSEEK_API_KEY"
+    ],
+    "id": "deepseek"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / high / max",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "deepseek-v4-pro",
+   "sources": {
+    "canonicalModel": "models/deepseek/deepseek-v4-pro-0813.toml",
+    "ocg": "providers/opencode-go/models/deepseek-v4-pro.toml",
+    "provider": "providers/deepseek/provider.toml",
+    "providerModel": "providers/deepseek/models/deepseek-v4-pro.toml"
+   }
+  },
+  "deepseek-v4.1-flash": {
+   "contextWindow": 1000000,
+   "id": "deepseek-v4.1-flash",
+   "input": [
+    "text",
+    "image"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "deepseek",
+   "maxTokens": 384000,
+   "notes": [
+    "DeepSeek-V4.1-Flash, served as `deepseek-flash`. The legacy names `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are still accepted, but those models are retired and requests are served by DeepSeek-V4.1-Flash at the Flash price. Reasoning tokens are billed at the output rate (no separate CoT price). Off-peak rates are half of peak; models.dev records the off-peak rate. OpenAI: `thinking.type = enabled|disabled`, `reasoning_effort = low|high|max`. Anthropic: `thinking.type`, `output_config.effort = low|high|max`; budget ignored. Flash maps requested low -> low (unlike Pro). xhigh -> high. https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-09-10) https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-09-10)",
+    "OpenAI Chat is POST `/chat/completions`: `thinking.type = enabled|disabled` and `reasoning_effort = low|high|max`. Flash maps low→low; Pro maps low→high; xhigh maps to high (flash) or max (pro). Anthropic Messages is POST `/anthropic/v1/messages`: `thinking.type` and `output_config.effort = low|high|max`; `thinking.budget_tokens` is ignored. https://api-docs.deepseek.com/guides/thinking_mode/ (accessed 2026-08-02) https://api-docs.deepseek.com/guides/anthropic_api (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.deepseek.com",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "env": [
+     "DEEPSEEK_API_KEY"
+    ],
+    "id": "deepseek"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "deepseek-v4.1-flash",
+   "sources": {
+    "canonicalModel": "models/deepseek/deepseek-v4.1-flash.toml",
+    "ocg": "providers/opencode-go/models/deepseek-v4.1-flash.toml",
+    "provider": "providers/deepseek/provider.toml",
+    "providerModel": "providers/deepseek/models/deepseek-flash.toml"
+   }
+  },
+  "glm-5": {
+   "contextWindow": 204800,
+   "id": "glm-5",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "zhipuai",
+   "maxTokens": 131072,
+   "notes": [
+    "Chat reasoning: POST https://open.bigmodel.cn/api/paas/v4/chat/completions with `thinking.type = \"enabled\" | \"disabled\"` (default: enabled). https://docs.bigmodel.cn/cn/guide/capabilities/thinking (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://open.bigmodel.cn/api/paas/v4",
+    "doc": "https://docs.z.ai/guides/overview/pricing",
+    "env": [
+     "ZHIPU_API_KEY"
+    ],
+    "id": "zhipuai"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "glm-5",
+   "sources": {
+    "canonicalModel": "models/zhipuai/glm-5.toml",
+    "ocg": "providers/opencode-go/models/glm-5.toml",
+    "provider": "providers/zhipuai/provider.toml",
+    "providerModel": "providers/zhipuai/models/glm-5.toml"
+   }
+  },
+  "glm-5.1": {
+   "contextWindow": 200000,
+   "id": "glm-5.1",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "zhipuai",
+   "maxTokens": 131072,
+   "notes": [
+    "Chat reasoning: POST https://open.bigmodel.cn/api/paas/v4/chat/completions with `thinking.type = \"enabled\" | \"disabled\"` (default: enabled). https://docs.bigmodel.cn/cn/guide/capabilities/thinking (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://open.bigmodel.cn/api/paas/v4",
+    "doc": "https://docs.z.ai/guides/overview/pricing",
+    "env": [
+     "ZHIPU_API_KEY"
+    ],
+    "id": "zhipuai"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "glm-5.1",
+   "sources": {
+    "canonicalModel": "models/zhipuai/glm-5.1.toml",
+    "ocg": "providers/opencode-go/models/glm-5.1.toml",
+    "provider": "providers/zhipuai/provider.toml",
+    "providerModel": "providers/zhipuai/models/glm-5.1.toml"
+   }
+  },
+  "glm-5.2": {
+   "contextWindow": 1000000,
+   "id": "glm-5.2",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "zhipuai",
+   "maxTokens": 131072,
+   "notes": [
+    "`reasoning_effort`: none|minimal skip thinking, low|medium map to high, and xhigh maps to max; effective levels are high|max (default: max). https://docs.bigmodel.cn/cn/guide/capabilities/thinking (accessed 2026-06-25)",
+    "Chat reasoning: POST https://open.bigmodel.cn/api/paas/v4/chat/completions with `thinking.type = \"enabled\" | \"disabled\"` (default: enabled). https://docs.bigmodel.cn/cn/guide/capabilities/thinking (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://open.bigmodel.cn/api/paas/v4",
+    "doc": "https://docs.z.ai/guides/overview/pricing",
+    "env": [
+     "ZHIPU_API_KEY"
+    ],
+    "id": "zhipuai"
+   },
+   "reasoning": true,
+   "reasoningContract": "high / max",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "glm-5.2",
+   "sources": {
+    "canonicalModel": "models/zhipuai/glm-5.2.toml",
+    "ocg": "providers/opencode-go/models/glm-5.2.toml",
+    "provider": "providers/zhipuai/provider.toml",
+    "providerModel": "providers/zhipuai/models/glm-5.2.toml"
+   }
+  },
+  "glm-5.3": {
+   "contextWindow": 1000000,
+   "id": "glm-5.3",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "zhipuai",
+   "maxTokens": 131072,
+   "notes": [
+    "GLM-5.3 always reasons (thinking cannot be disabled); effort levels low|high|max with default max. Standard model API (open.bigmodel.cn). https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3 Cost: https://docs.z.ai/guides/overview/pricing (accessed 2026-08-26)",
+    "Chat reasoning: POST https://open.bigmodel.cn/api/paas/v4/chat/completions with `thinking.type = \"enabled\" | \"disabled\"` (default: enabled). https://docs.bigmodel.cn/cn/guide/capabilities/thinking (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://open.bigmodel.cn/api/paas/v4",
+    "doc": "https://docs.z.ai/guides/overview/pricing",
+    "env": [
+     "ZHIPU_API_KEY"
+    ],
+    "id": "zhipuai"
+   },
+   "reasoning": true,
+   "reasoningContract": "low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "glm-5.3",
+   "sources": {
+    "canonicalModel": "models/zhipuai/glm-5.3.toml",
+    "ocg": "providers/opencode-go/models/glm-5.3.toml",
+    "provider": "providers/zhipuai/provider.toml",
+    "providerModel": "providers/zhipuai/models/glm-5.3.toml"
+   }
+  },
+  "glm-5.3-flash": {
+   "contextWindow": 1000000,
+   "id": "glm-5.3-flash",
+   "input": [
+    "text",
+    "image",
+    "video",
+    "pdf"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "zhipuai",
+   "maxTokens": 131072,
+   "notes": [
+    "GLM-5.3-Flash always reasons (thinking cannot be disabled); text params match GLM-5.3 — effort low|high|max with default max. https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash Cost: https://docs.z.ai/guides/overview/pricing (accessed 2026-08-26) GLM-5.3-Flash 50% promo ends 2026-09-09 24:00 UTC+8; list $0.15/$0.03/$0.50.",
+    "Chat reasoning: POST https://open.bigmodel.cn/api/paas/v4/chat/completions with `thinking.type = \"enabled\" | \"disabled\"` (default: enabled). https://docs.bigmodel.cn/cn/guide/capabilities/thinking (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://open.bigmodel.cn/api/paas/v4",
+    "doc": "https://docs.z.ai/guides/overview/pricing",
+    "env": [
+     "ZHIPU_API_KEY"
+    ],
+    "id": "zhipuai"
+   },
+   "reasoning": true,
+   "reasoningContract": "low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "glm-5.3-flash",
+   "sources": {
+    "canonicalModel": "models/zhipuai/glm-5.3-flash.toml",
+    "ocg": "providers/opencode-go/models/glm-5.3-flash.toml",
+    "provider": "providers/zhipuai/provider.toml",
+    "providerModel": "providers/zhipuai/models/glm-5.3-flash.toml"
+   }
+  },
+  "gpt-5.6-luna": {
+   "contextWindow": 1050000,
+   "id": "gpt-5.6-luna",
+   "input": [
+    "text",
+    "image",
+    "pdf"
+   ],
+   "lab": "openai",
+   "maxTokens": 128000,
+   "notes": [
+    "Pricing: https://developers.openai.com/api/docs/pricing (Terra/Luna cut 2026-07-30)"
+   ],
+   "provider": {
+    "doc": "https://platform.openai.com/docs/models",
+    "env": [
+     "OPENAI_API_KEY"
+    ],
+    "id": "openai"
+   },
+   "reasoning": true,
+   "reasoningContract": "none / low / medium / high / xhigh / max",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "gpt-5.6-luna",
+   "sources": {
+    "canonicalModel": "models/openai/gpt-5.6-luna.toml",
+    "ocg": "providers/opencode-go/models/gpt-5.6-luna.toml",
+    "provider": "providers/openai/provider.toml",
+    "providerModel": "providers/openai/models/gpt-5.6-luna.toml"
+   }
+  },
+  "grok-4.5": {
+   "contextWindow": 500000,
+   "id": "grok-4.5",
+   "input": [
+    "text",
+    "image",
+    "pdf"
+   ],
+   "lab": "xai",
+   "maxTokens": 500000,
+   "notes": [],
+   "provider": {
+    "doc": "https://docs.x.ai/docs/models",
+    "env": [
+     "XAI_API_KEY"
+    ],
+    "id": "xai"
+   },
+   "reasoning": true,
+   "reasoningContract": "low / medium / high",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "medium",
+      "high"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "grok-4.5",
+   "sources": {
+    "canonicalModel": "models/xai/grok-4.5.toml",
+    "ocg": "providers/opencode-go/models/grok-4.5.toml",
+    "provider": "providers/xai/provider.toml",
+    "providerModel": "providers/xai/models/grok-4.5.toml"
+   }
+  },
+  "grok-4.6": {
+   "contextWindow": 500000,
+   "id": "grok-4.6",
+   "input": [
+    "text",
+    "image",
+    "pdf"
+   ],
+   "lab": "xai",
+   "maxTokens": 500000,
+   "notes": [
+    "Sources: https://docs.x.ai/developers/models/grok-4.6, https://docs.x.ai/developers/pricing, and https://docs.x.ai/developers/model-capabilities/text/reasoning"
+   ],
+   "provider": {
+    "doc": "https://docs.x.ai/docs/models",
+    "env": [
+     "XAI_API_KEY"
+    ],
+    "id": "xai"
+   },
+   "reasoning": true,
+   "reasoningContract": "low / medium / high / xhigh",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "grok-4.6",
+   "sources": {
+    "canonicalModel": "models/xai/grok-4.6.toml",
+    "ocg": "providers/opencode-go/models/grok-4.6.toml",
+    "provider": "providers/xai/provider.toml",
+    "providerModel": "providers/xai/models/grok-4.6.toml"
+   }
+  },
+  "hy3": {
+   "contextWindow": 256000,
+   "id": "hy3",
+   "input": [
+    "text"
+   ],
+   "lab": "tencent",
+   "maxTokens": 128000,
+   "notes": [
+    "`thinking.type` accepts enabled/disabled (default disabled), while top-level `reasoning_effort` accepts low/medium/high (default low), accessed 2026-06-25. https://cloud.tencent.com/document/product/1823/131208"
+   ],
+   "reasoning": true,
+   "reasoningContract": "off / none / high",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "none",
+      "high"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "hy3",
+   "sources": {
+    "canonicalModel": "models/tencent/hy3.toml",
+    "ocg": "providers/opencode-go/models/hy3.toml",
+    "providerModel": "providers/tencent-tokenhub/models/hy3.toml"
+   }
+  },
+  "hy3-preview": {
+   "contextWindow": 256000,
+   "id": "hy3-preview",
+   "input": [
+    "text"
+   ],
+   "lab": "tencent",
+   "maxTokens": 64000,
+   "notes": [
+    "`thinking.type` accepts enabled/disabled (default disabled), while top-level `reasoning_effort` accepts low/medium/high (default low), accessed 2026-06-25. https://cloud.tencent.com/document/product/1823/131208"
+   ],
+   "reasoning": true,
+   "reasoningContract": "off / low / medium / high",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "medium",
+      "high"
+     ]
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "hy3-preview",
+   "sources": {
+    "canonicalModel": "models/tencent/hy3-preview.toml",
+    "providerModel": "providers/tencent-tokenhub/models/hy3-preview.toml"
+   }
+  },
+  "hy4-preview": {
+   "contextWindow": 1024000,
+   "id": "hy4-preview",
+   "input": [
+    "text"
+   ],
+   "lab": "tencent",
+   "maxTokens": 64000,
+   "notes": [
+    "China-site list CNY → USD: list_price / tax_rate * FX (accessed 2026-08-26). Source USD/1k tokens: input 0.000834, output 0.002501, cache hit 0.000042. Catalog is USD / million tokens (×1000). Toggle: thinking.type = enabled|disabled (default disabled) Effort: reasoning_effort = none|high https://cloud.tencent.com/document/product/1823/130055 https://cloud.tencent.com/document/product/1823/131208"
+   ],
+   "reasoning": true,
+   "reasoningContract": "off / none / high",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "none",
+      "high"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "hy4-preview",
+   "sources": {
+    "canonicalModel": "models/tencent/hy4-preview.toml",
+    "ocg": "providers/opencode-go/models/hy4-preview.toml",
+    "providerModel": "providers/tencent-tokenhub/models/hy4-preview.toml"
+   }
+  },
+  "kimi-k2.5": {
+   "contextWindow": 262144,
+   "id": "kimi-k2.5",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "lab": "moonshotai",
+   "maxTokens": 262144,
+   "notes": [
+    "Chat is POST `/v1/chat/completions`. Kimi K2.5 and K2.6 toggle reasoning with `thinking.type = \"enabled\"|\"disabled\"` (enabled by default); K2.7 Code only accepts `\"enabled\"`, so it is always on. No effort or token budget is exposed. https://platform.kimi.ai/docs/api/chat (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.moonshot.ai/v1",
+    "doc": "https://platform.moonshot.ai/docs/api/chat",
+    "env": [
+     "MOONSHOT_API_KEY"
+    ],
+    "id": "moonshotai"
+   },
+   "reasoning": true,
+   "reasoningContract": "none declared",
+   "reasoningOptions": [],
+   "resolution": "no-base-model",
+   "slug": "kimi-k2.5",
+   "sources": {
+    "canonicalModel": "models/moonshotai/kimi-k2.5.toml",
+    "ocg": "providers/opencode-go/models/kimi-k2.5.toml",
+    "provider": "providers/moonshotai/provider.toml"
+   }
+  },
+  "kimi-k2.6": {
+   "contextWindow": 262144,
+   "id": "kimi-k2.6",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "moonshotai",
+   "maxTokens": 262144,
+   "notes": [
+    "Chat is POST `/v1/chat/completions`. Kimi K2.5 and K2.6 toggle reasoning with `thinking.type = \"enabled\"|\"disabled\"` (enabled by default); K2.7 Code only accepts `\"enabled\"`, so it is always on. No effort or token budget is exposed. https://platform.kimi.ai/docs/api/chat (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.moonshot.ai/v1",
+    "doc": "https://platform.moonshot.ai/docs/api/chat",
+    "env": [
+     "MOONSHOT_API_KEY"
+    ],
+    "id": "moonshotai"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "kimi-k2.6",
+   "sources": {
+    "canonicalModel": "models/moonshotai/kimi-k2.6.toml",
+    "ocg": "providers/opencode-go/models/kimi-k2.6.toml",
+    "provider": "providers/moonshotai/provider.toml",
+    "providerModel": "providers/moonshotai/models/kimi-k2.6.toml"
+   }
+  },
+  "kimi-k2.7-code": {
+   "contextWindow": 262144,
+   "id": "kimi-k2.7-code",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "moonshotai",
+   "maxTokens": 262144,
+   "notes": [
+    "Chat is POST `/v1/chat/completions`. Kimi K2.5 and K2.6 toggle reasoning with `thinking.type = \"enabled\"|\"disabled\"` (enabled by default); K2.7 Code only accepts `\"enabled\"`, so it is always on. No effort or token budget is exposed. https://platform.kimi.ai/docs/api/chat (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.moonshot.ai/v1",
+    "doc": "https://platform.moonshot.ai/docs/api/chat",
+    "env": [
+     "MOONSHOT_API_KEY"
+    ],
+    "id": "moonshotai"
+   },
+   "reasoning": true,
+   "reasoningContract": "none declared",
+   "reasoningOptions": [],
+   "resolution": "base_model",
+   "slug": "kimi-k2.7-code",
+   "sources": {
+    "canonicalModel": "models/moonshotai/kimi-k2.7-code.toml",
+    "ocg": "providers/opencode-go/models/kimi-k2.7-code.toml",
+    "provider": "providers/moonshotai/provider.toml",
+    "providerModel": "providers/moonshotai/models/kimi-k2.7-code.toml"
+   }
+  },
+  "kimi-k3": {
+   "contextWindow": 1048576,
+   "id": "kimi-k3",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "moonshotai",
+   "maxTokens": 131072,
+   "notes": [
+    "API: thinking.type = \"enabled\" | \"disabled\" | \"adaptive\"; in adaptive mode the reasoning depth is set by output_config.effort = \"low\" | \"high\" | \"max\". Pricing: https://platform.kimi.ai/docs/pricing/chat-k3 (accessed 2026-07-17).",
+    "Chat is POST `/v1/chat/completions`. Kimi K2.5 and K2.6 toggle reasoning with `thinking.type = \"enabled\"|\"disabled\"` (enabled by default); K2.7 Code only accepts `\"enabled\"`, so it is always on. No effort or token budget is exposed. https://platform.kimi.ai/docs/api/chat (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.moonshot.ai/v1",
+    "doc": "https://platform.moonshot.ai/docs/api/chat",
+    "env": [
+     "MOONSHOT_API_KEY"
+    ],
+    "id": "moonshotai"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / high / max",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "high",
+      "max"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "kimi-k3",
+   "sources": {
+    "canonicalModel": "models/moonshotai/kimi-k3.toml",
+    "ocg": "providers/opencode-go/models/kimi-k3.toml",
+    "provider": "providers/moonshotai/provider.toml",
+    "providerModel": "providers/moonshotai/models/kimi-k3.toml"
+   }
+  },
+  "longcat-2.0": {
+   "contextWindow": 1000000,
+   "id": "longcat-2.0",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "meituan",
+   "maxTokens": 131072,
+   "notes": [
+    "API: {\"thinking\": {\"type\": \"enabled\"}} / {\"thinking\": {\"type\": \"disabled\"}}"
+   ],
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "longcat-2.0",
+   "sources": {
+    "canonicalModel": "models/meituan/longcat-2.0.toml",
+    "ocg": "providers/opencode-go/models/longcat-2.0.toml",
+    "providerModel": "providers/longcat/models/LongCat-2.0.toml"
+   }
+  },
+  "mimo-v2-omni": {
+   "contextWindow": 262144,
+   "id": "mimo-v2-omni",
+   "input": [
+    "text",
+    "image",
+    "audio",
+    "video",
+    "pdf"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "xiaomi",
+   "maxTokens": 131072,
+   "notes": [
+    "Raw endpoints are POST https://api.xiaomimimo.com/v1/chat/completions and POST https://api.xiaomimimo.com/anthropic/v1/messages. Both use thinking.type=\"enabled\"|\"disabled\". Flash defaults disabled; V2.5 Pro, V2.5, V2 Pro, and V2 Omni default enabled; TTS models do not support it. https://platform.xiaomimimo.com/static/docs/api/chat/openai-api.md (accessed 2026-06-25) https://platform.xiaomimimo.com/static/docs/api/chat/anthropic-api.md (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.xiaomimimo.com/v1",
+    "doc": "https://platform.xiaomimimo.com/#/docs",
+    "env": [
+     "XIAOMI_API_KEY"
+    ],
+    "id": "xiaomi"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "mimo-v2-omni",
+   "sources": {
+    "canonicalModel": "models/xiaomi/mimo-v2-omni.toml",
+    "ocg": "providers/opencode-go/models/mimo-v2-omni.toml",
+    "provider": "providers/xiaomi/provider.toml",
+    "providerModel": "providers/xiaomi/models/mimo-v2-omni.toml"
+   }
+  },
+  "mimo-v2-pro": {
+   "contextWindow": 1048576,
+   "id": "mimo-v2-pro",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "xiaomi",
+   "maxTokens": 131072,
+   "notes": [
+    "Raw endpoints are POST https://api.xiaomimimo.com/v1/chat/completions and POST https://api.xiaomimimo.com/anthropic/v1/messages. Both use thinking.type=\"enabled\"|\"disabled\". Flash defaults disabled; V2.5 Pro, V2.5, V2 Pro, and V2 Omni default enabled; TTS models do not support it. https://platform.xiaomimimo.com/static/docs/api/chat/openai-api.md (accessed 2026-06-25) https://platform.xiaomimimo.com/static/docs/api/chat/anthropic-api.md (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.xiaomimimo.com/v1",
+    "doc": "https://platform.xiaomimimo.com/#/docs",
+    "env": [
+     "XIAOMI_API_KEY"
+    ],
+    "id": "xiaomi"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "mimo-v2-pro",
+   "sources": {
+    "canonicalModel": "models/xiaomi/mimo-v2-pro.toml",
+    "ocg": "providers/opencode-go/models/mimo-v2-pro.toml",
+    "provider": "providers/xiaomi/provider.toml",
+    "providerModel": "providers/xiaomi/models/mimo-v2-pro.toml"
+   }
+  },
+  "mimo-v2.5": {
+   "contextWindow": 1048576,
+   "id": "mimo-v2.5",
+   "input": [
+    "text",
+    "image",
+    "audio",
+    "video"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "xiaomi",
+   "maxTokens": 131072,
+   "notes": [
+    "Raw endpoints are POST https://api.xiaomimimo.com/v1/chat/completions and POST https://api.xiaomimimo.com/anthropic/v1/messages. Both use thinking.type=\"enabled\"|\"disabled\". Flash defaults disabled; V2.5 Pro, V2.5, V2 Pro, and V2 Omni default enabled; TTS models do not support it. https://platform.xiaomimimo.com/static/docs/api/chat/openai-api.md (accessed 2026-06-25) https://platform.xiaomimimo.com/static/docs/api/chat/anthropic-api.md (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.xiaomimimo.com/v1",
+    "doc": "https://platform.xiaomimimo.com/#/docs",
+    "env": [
+     "XIAOMI_API_KEY"
+    ],
+    "id": "xiaomi"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "mimo-v2.5",
+   "sources": {
+    "canonicalModel": "models/xiaomi/mimo-v2.5.toml",
+    "ocg": "providers/opencode-go/models/mimo-v2.5.toml",
+    "provider": "providers/xiaomi/provider.toml",
+    "providerModel": "providers/xiaomi/models/mimo-v2.5.toml"
+   }
+  },
+  "mimo-v2.5-pro": {
+   "contextWindow": 1048576,
+   "id": "mimo-v2.5-pro",
+   "input": [
+    "text"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "xiaomi",
+   "maxTokens": 131072,
+   "notes": [
+    "Raw endpoints are POST https://api.xiaomimimo.com/v1/chat/completions and POST https://api.xiaomimimo.com/anthropic/v1/messages. Both use thinking.type=\"enabled\"|\"disabled\". Flash defaults disabled; V2.5 Pro, V2.5, V2 Pro, and V2 Omni default enabled; TTS models do not support it. https://platform.xiaomimimo.com/static/docs/api/chat/openai-api.md (accessed 2026-06-25) https://platform.xiaomimimo.com/static/docs/api/chat/anthropic-api.md (accessed 2026-06-25)"
+   ],
+   "provider": {
+    "api": "https://api.xiaomimimo.com/v1",
+    "doc": "https://platform.xiaomimimo.com/#/docs",
+    "env": [
+     "XIAOMI_API_KEY"
+    ],
+    "id": "xiaomi"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "mimo-v2.5-pro",
+   "sources": {
+    "canonicalModel": "models/xiaomi/mimo-v2.5-pro.toml",
+    "ocg": "providers/opencode-go/models/mimo-v2.5-pro.toml",
+    "provider": "providers/xiaomi/provider.toml",
+    "providerModel": "providers/xiaomi/models/mimo-v2.5-pro.toml"
+   }
+  },
+  "minimax-m2.5": {
+   "contextWindow": 204800,
+   "id": "minimax-m2.5",
+   "input": [
+    "text"
+   ],
+   "lab": "minimax",
+   "maxTokens": 131072,
+   "notes": [],
+   "provider": {
+    "api": "https://api.minimax.io/anthropic/v1",
+    "doc": "https://platform.minimax.io/docs/guides/quickstart",
+    "env": [
+     "MINIMAX_API_KEY"
+    ],
+    "id": "minimax"
+   },
+   "reasoning": true,
+   "reasoningContract": "none declared",
+   "reasoningOptions": [],
+   "resolution": "no-base-model",
+   "slug": "MiniMax-M2.5",
+   "sources": {
+    "canonicalModel": "models/minimax/MiniMax-M2.5.toml",
+    "ocg": "providers/opencode-go/models/minimax-m2.5.toml",
+    "provider": "providers/minimax/provider.toml",
+    "providerModel": "providers/minimax/models/MiniMax-M2.5.toml"
+   }
+  },
+  "minimax-m2.7": {
+   "contextWindow": 204800,
+   "id": "minimax-m2.7",
+   "input": [
+    "text"
+   ],
+   "lab": "minimax",
+   "maxTokens": 131072,
+   "notes": [],
+   "provider": {
+    "api": "https://api.minimax.io/anthropic/v1",
+    "doc": "https://platform.minimax.io/docs/guides/quickstart",
+    "env": [
+     "MINIMAX_API_KEY"
+    ],
+    "id": "minimax"
+   },
+   "reasoning": true,
+   "reasoningContract": "none declared",
+   "reasoningOptions": [],
+   "resolution": "no-base-model",
+   "slug": "MiniMax-M2.7",
+   "sources": {
+    "canonicalModel": "models/minimax/MiniMax-M2.7.toml",
+    "ocg": "providers/opencode-go/models/minimax-m2.7.toml",
+    "provider": "providers/minimax/provider.toml",
+    "providerModel": "providers/minimax/models/MiniMax-M2.7.toml"
+   }
+  },
+  "minimax-m3": {
+   "contextWindow": 1048576,
+   "id": "minimax-m3",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "lab": "minimax",
+   "maxTokens": 512000,
+   "notes": [],
+   "provider": {
+    "api": "https://api.minimax.io/anthropic/v1",
+    "doc": "https://platform.minimax.io/docs/guides/quickstart",
+    "env": [
+     "MINIMAX_API_KEY"
+    ],
+    "id": "minimax"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "MiniMax-M3",
+   "sources": {
+    "canonicalModel": "models/minimax/MiniMax-M3.toml",
+    "ocg": "providers/opencode-go/models/minimax-m3.toml",
+    "provider": "providers/minimax/provider.toml",
+    "providerModel": "providers/minimax/models/MiniMax-M3.toml"
+   }
+  },
+  "muse-spark-1.2-contributor": {
+   "contextWindow": 1048576,
+   "id": "muse-spark-1.2-contributor",
+   "input": [
+    "text",
+    "image",
+    "audio",
+    "video",
+    "pdf"
+   ],
+   "lab": "meta",
+   "maxTokens": 131072,
+   "notes": [
+    "Sources: https://dev.meta.ai/docs/overview/ https://dev.meta.ai/docs/pricing-rate-limits/ Contributor tier prompts and completions may be used to improve Meta's products."
+   ],
+   "provider": {
+    "api": "https://api.meta.ai/v1",
+    "doc": "https://dev.meta.ai/docs",
+    "env": [
+     "META_MODEL_API_KEY"
+    ],
+    "id": "meta"
+   },
+   "reasoning": true,
+   "reasoningContract": "minimal / low / medium / high / xhigh",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+     ]
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "muse-spark-1.2",
+   "sources": {
+    "canonicalModel": "models/meta/muse-spark-1.2.toml",
+    "ocg": "providers/opencode-go/models/muse-spark-1.2-contributor.toml",
+    "provider": "providers/meta/provider.toml",
+    "providerModel": "providers/meta/models/muse-spark-1.2-contributor.toml"
+   }
+  },
+  "muse-spark-1.3-contributor": {
+   "contextWindow": 1048576,
+   "id": "muse-spark-1.3-contributor",
+   "input": [
+    "text",
+    "image",
+    "audio",
+    "video",
+    "pdf"
+   ],
+   "lab": "meta",
+   "maxTokens": 131072,
+   "notes": [
+    "Sources: https://research.meta.ai/blog/introducing-muse-spark-1-3 https://dev.meta.ai/docs/models https://dev.meta.ai/docs/pricing-rate-limits https://openrouter.ai/meta/muse-spark-1.3-contributor (OpenRouter Meta-hosted catalog snapshot, 2026-09-02) Contributor tier prompts and completions may be used to improve Meta's products."
+   ],
+   "provider": {
+    "api": "https://api.meta.ai/v1",
+    "doc": "https://dev.meta.ai/docs",
+    "env": [
+     "META_MODEL_API_KEY"
+    ],
+    "id": "meta"
+   },
+   "reasoning": true,
+   "reasoningContract": "minimal / low / medium / high / xhigh",
+   "reasoningOptions": [
+    {
+     "type": "effort",
+     "values": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+     ]
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "muse-spark-1.3-contributor",
+   "sources": {
+    "canonicalModel": "models/meta/muse-spark-1.3.toml",
+    "ocg": "providers/opencode-go/models/muse-spark-1.3-contributor.toml",
+    "provider": "providers/meta/provider.toml",
+    "providerModel": "providers/meta/models/muse-spark-1.3-contributor.toml"
+   }
+  },
+  "qwen3.5-plus": {
+   "contextWindow": 1000000,
+   "id": "qwen3.5-plus",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "lab": "alibaba",
+   "maxTokens": 65536,
+   "notes": [
+    "Reasoning HTTP format (accessed 2026-06-25): OpenAI Chat: POST /compatible-mode/v1/chat/completions; top-level `enable_thinking` is true or false and `thinking_budget` is an integer token cap (Qwen3/Qwen3.5/Qwen3.6/Qwen3.7/Qwen3-VL thinking mode and Kimi; public docs say the default is the model maximum but do not publish bounds). Responses: POST /compatible-mode/v1/responses; `reasoning.effort` is none, minimal, low, medium (default), or high; no numeric thinking budget is accepted. Anthropic: POST /apps/anthropic/v1/messages; `thinking.type` is enabled or disabled and `thinking.budget_tokens` is an integer used only when enabled. `reasoning_effort` is high or max only for DeepSeek V4 Pro/Flash. DashScope text: POST /api/v1/services/aigc/text-generation/generation; put `enable_thinking` and `thinking_budget` under `parameters`, not at JSON root. Sources: https://www.alibabacloud.com/help/en/model-studio/deep-thinking https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages"
+   ],
+   "provider": {
+    "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "doc": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "env": [
+     "DASHSCOPE_API_KEY"
+    ],
+    "id": "alibaba"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on + budget",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "budget_tokens"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "qwen3.5-plus",
+   "sources": {
+    "canonicalModel": "models/alibaba/qwen3.5-plus.toml",
+    "ocg": "providers/opencode-go/models/qwen3.5-plus.toml",
+    "provider": "providers/alibaba/provider.toml",
+    "providerModel": "providers/alibaba/models/qwen3.5-plus.toml"
+   }
+  },
+  "qwen3.6-plus": {
+   "contextWindow": 1000000,
+   "id": "qwen3.6-plus",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "lab": "alibaba",
+   "maxTokens": 65536,
+   "notes": [
+    "Reasoning HTTP format (accessed 2026-06-25): OpenAI Chat: POST /compatible-mode/v1/chat/completions; top-level `enable_thinking` is true or false and `thinking_budget` is an integer token cap (Qwen3/Qwen3.5/Qwen3.6/Qwen3.7/Qwen3-VL thinking mode and Kimi; public docs say the default is the model maximum but do not publish bounds). Responses: POST /compatible-mode/v1/responses; `reasoning.effort` is none, minimal, low, medium (default), or high; no numeric thinking budget is accepted. Anthropic: POST /apps/anthropic/v1/messages; `thinking.type` is enabled or disabled and `thinking.budget_tokens` is an integer used only when enabled. `reasoning_effort` is high or max only for DeepSeek V4 Pro/Flash. DashScope text: POST /api/v1/services/aigc/text-generation/generation; put `enable_thinking` and `thinking_budget` under `parameters`, not at JSON root. Sources: https://www.alibabacloud.com/help/en/model-studio/deep-thinking https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages"
+   ],
+   "provider": {
+    "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "doc": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "env": [
+     "DASHSCOPE_API_KEY"
+    ],
+    "id": "alibaba"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on + budget",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "budget_tokens"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "qwen3.6-plus",
+   "sources": {
+    "canonicalModel": "models/alibaba/qwen3.6-plus.toml",
+    "ocg": "providers/opencode-go/models/qwen3.6-plus.toml",
+    "provider": "providers/alibaba/provider.toml",
+    "providerModel": "providers/alibaba/models/qwen3.6-plus.toml"
+   }
+  },
+  "qwen3.7-max": {
+   "contextWindow": 1000000,
+   "id": "qwen3.7-max",
+   "input": [
+    "text"
+   ],
+   "lab": "alibaba",
+   "maxTokens": 65536,
+   "notes": [
+    "Reasoning HTTP format (accessed 2026-06-25): OpenAI Chat: POST /compatible-mode/v1/chat/completions; top-level `enable_thinking` is true or false and `thinking_budget` is an integer token cap (Qwen3/Qwen3.5/Qwen3.6/Qwen3.7/Qwen3-VL thinking mode and Kimi; public docs say the default is the model maximum but do not publish bounds). Responses: POST /compatible-mode/v1/responses; `reasoning.effort` is none, minimal, low, medium (default), or high; no numeric thinking budget is accepted. Anthropic: POST /apps/anthropic/v1/messages; `thinking.type` is enabled or disabled and `thinking.budget_tokens` is an integer used only when enabled. `reasoning_effort` is high or max only for DeepSeek V4 Pro/Flash. DashScope text: POST /api/v1/services/aigc/text-generation/generation; put `enable_thinking` and `thinking_budget` under `parameters`, not at JSON root. Sources: https://www.alibabacloud.com/help/en/model-studio/deep-thinking https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages"
+   ],
+   "provider": {
+    "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "doc": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "env": [
+     "DASHSCOPE_API_KEY"
+    ],
+    "id": "alibaba"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on + budget",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "budget_tokens"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "qwen3.7-max",
+   "sources": {
+    "canonicalModel": "models/alibaba/qwen3.7-max.toml",
+    "ocg": "providers/opencode-go/models/qwen3.7-max.toml",
+    "provider": "providers/alibaba/provider.toml",
+    "providerModel": "providers/alibaba/models/qwen3.7-max.toml"
+   }
+  },
+  "qwen3.7-plus": {
+   "contextWindow": 1000000,
+   "id": "qwen3.7-plus",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "lab": "alibaba",
+   "maxTokens": 65536,
+   "notes": [
+    "Reasoning HTTP format (accessed 2026-06-25): OpenAI Chat: POST /compatible-mode/v1/chat/completions; top-level `enable_thinking` is true or false and `thinking_budget` is an integer token cap (Qwen3/Qwen3.5/Qwen3.6/Qwen3.7/Qwen3-VL thinking mode and Kimi; public docs say the default is the model maximum but do not publish bounds). Responses: POST /compatible-mode/v1/responses; `reasoning.effort` is none, minimal, low, medium (default), or high; no numeric thinking budget is accepted. Anthropic: POST /apps/anthropic/v1/messages; `thinking.type` is enabled or disabled and `thinking.budget_tokens` is an integer used only when enabled. `reasoning_effort` is high or max only for DeepSeek V4 Pro/Flash. DashScope text: POST /api/v1/services/aigc/text-generation/generation; put `enable_thinking` and `thinking_budget` under `parameters`, not at JSON root. Sources: https://www.alibabacloud.com/help/en/model-studio/deep-thinking https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages"
+   ],
+   "provider": {
+    "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "doc": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "env": [
+     "DASHSCOPE_API_KEY"
+    ],
+    "id": "alibaba"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / on + budget",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "budget_tokens"
+    }
+   ],
+   "resolution": "no-base-model",
+   "slug": "qwen3.7-plus",
+   "sources": {
+    "canonicalModel": "models/alibaba/qwen3.7-plus.toml",
+    "ocg": "providers/opencode-go/models/qwen3.7-plus.toml",
+    "provider": "providers/alibaba/provider.toml",
+    "providerModel": "providers/alibaba/models/qwen3.7-plus.toml"
+   }
+  },
+  "qwen3.8-flash": {
+   "contextWindow": 1000000,
+   "id": "qwen3.8-flash",
+   "input": [
+    "text",
+    "image",
+    "video"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "alibaba",
+   "maxTokens": 131072,
+   "notes": [
+    "Sources (accessed 2026-08-28): https://www.qwencloud.com/models/qwen3.8-flash Pricing: $0.15 input / $0.47 output / cache read $0.016 / cache create $0.2 per 1M tokens, flat. (Release blog quotes ~$0.16 input; model page prevails.) Toggle: enable_thinking true|false (hybrid) Effort: reasoning_effort = low|medium|xhigh (not yet in the API reference; see the Qwen3.8-Flash-Next release blog) Budget: thinking_budget (Max Reasoning 262K)",
+    "Reasoning HTTP format (accessed 2026-06-25): OpenAI Chat: POST /compatible-mode/v1/chat/completions; top-level `enable_thinking` is true or false and `thinking_budget` is an integer token cap (Qwen3/Qwen3.5/Qwen3.6/Qwen3.7/Qwen3-VL thinking mode and Kimi; public docs say the default is the model maximum but do not publish bounds). Responses: POST /compatible-mode/v1/responses; `reasoning.effort` is none, minimal, low, medium (default), or high; no numeric thinking budget is accepted. Anthropic: POST /apps/anthropic/v1/messages; `thinking.type` is enabled or disabled and `thinking.budget_tokens` is an integer used only when enabled. `reasoning_effort` is high or max only for DeepSeek V4 Pro/Flash. DashScope text: POST /api/v1/services/aigc/text-generation/generation; put `enable_thinking` and `thinking_budget` under `parameters`, not at JSON root. Sources: https://www.alibabacloud.com/help/en/model-studio/deep-thinking https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages"
+   ],
+   "provider": {
+    "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "doc": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "env": [
+     "DASHSCOPE_API_KEY"
+    ],
+    "id": "alibaba"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / medium / xhigh + budget≤262144",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "medium",
+      "xhigh"
+     ]
+    },
+    {
+     "max": 262144,
+     "type": "budget_tokens"
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "qwen3.8-flash",
+   "sources": {
+    "canonicalModel": "models/alibaba/qwen3.8-flash.toml",
+    "ocg": "providers/opencode-go/models/qwen3.8-flash.toml",
+    "provider": "providers/alibaba/provider.toml",
+    "providerModel": "providers/alibaba/models/qwen3.8-flash.toml"
+   }
+  },
+  "qwen3.8-max": {
+   "contextWindow": 1000000,
+   "id": "qwen3.8-max",
+   "input": [
+    "text",
+    "image",
+    "video",
+    "pdf"
+   ],
+   "interleavedField": "reasoning_content",
+   "lab": "alibaba",
+   "maxTokens": 131072,
+   "notes": [
+    "Sources (accessed 2026-08-04): https://www.qwencloud.com/models/qwen3.8-max https://docs.qwencloud.com/developer-guides/text-generation/thinking https://docs.qwencloud.com/developer-guides/getting-started/text-generation-models https://help.aliyun.com/zh/model-studio/model-pricing (Singapore: qwen3.8-max list) Toggle: enable_thinking true|false (hybrid) Effort: reasoning_effort = low|medium|xhigh (default xhigh); high accepted as alias → xhigh Budget: thinking_budget (0..262144) cannot be combined with reasoning_effort API: {\"enable_thinking\":true,\"reasoning_effort\":\"medium\"} or {\"enable_thinking\":true,\"thinking_budget\":16384} Pay-as-you-go on DashScope/QwenCloud (not Token Plan only). Cost USD/MTok from model page.",
+    "Reasoning HTTP format (accessed 2026-06-25): OpenAI Chat: POST /compatible-mode/v1/chat/completions; top-level `enable_thinking` is true or false and `thinking_budget` is an integer token cap (Qwen3/Qwen3.5/Qwen3.6/Qwen3.7/Qwen3-VL thinking mode and Kimi; public docs say the default is the model maximum but do not publish bounds). Responses: POST /compatible-mode/v1/responses; `reasoning.effort` is none, minimal, low, medium (default), or high; no numeric thinking budget is accepted. Anthropic: POST /apps/anthropic/v1/messages; `thinking.type` is enabled or disabled and `thinking.budget_tokens` is an integer used only when enabled. `reasoning_effort` is high or max only for DeepSeek V4 Pro/Flash. DashScope text: POST /api/v1/services/aigc/text-generation/generation; put `enable_thinking` and `thinking_budget` under `parameters`, not at JSON root. Sources: https://www.alibabacloud.com/help/en/model-studio/deep-thinking https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages"
+   ],
+   "provider": {
+    "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "doc": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "env": [
+     "DASHSCOPE_API_KEY"
+    ],
+    "id": "alibaba"
+   },
+   "reasoning": true,
+   "reasoningContract": "off / low / medium / xhigh + budget≤262144",
+   "reasoningOptions": [
+    {
+     "type": "toggle"
+    },
+    {
+     "type": "effort",
+     "values": [
+      "low",
+      "medium",
+      "xhigh"
+     ]
+    },
+    {
+     "max": 262144,
+     "min": 0,
+     "type": "budget_tokens"
+    }
+   ],
+   "resolution": "base_model",
+   "slug": "qwen3.8-max",
+   "sources": {
+    "canonicalModel": "models/alibaba/qwen3.8-max.toml",
+    "ocg": "providers/opencode-go/models/qwen3.8-max.toml",
+    "provider": "providers/alibaba/provider.toml",
+    "providerModel": "providers/alibaba/models/qwen3.8-max.toml"
+   }
+  }
+ },
+ "source": {
+  "branch": "dev",
+  "fetchedAt": "2026-09-12T09:00:19.286Z",
+  "mode": "network",
+  "rawBase": "https://raw.githubusercontent.com/anomalyco/models.dev/dev",
+  "repo": "github.com/anomalyco/models.dev"
+ },
+ "version": 1
+}

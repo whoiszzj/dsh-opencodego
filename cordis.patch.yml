@@ -1,0 +1,21 @@
+# dsh-opencodego bundle patch
+#
+# Inserts the plugin into the profile's composed cordis tree. The row carries
+# BOTH halves, which is what `dsh.client` in package.json is for: the host half
+# (registered here by name) contributes the LLM adapter route
+# `opencode-go-native` on ctx.llm, the read-only diagnostics/discovery HTTP
+# surface on ctx.webServer, and the `opencode-go-native` settings namespace;
+# the `dsh-client-modules` service discovers the same package's
+# `exports["./client"]` bundle from this row and serves it to the page, where it
+# registers the OpenCode Go settings section.
+#
+# One row is enough on purpose — a second `insert` for a "client half" would be
+# a second source of truth about what is composed. See README「Web 设置页」.
+#
+# The route is registered unconditionally so the provider is visible and
+# configurable; requests fail loudly (MISSING_CREDENTIAL / TRANSPORT) until a
+# baseURL and API key are available. See README「配置」.
+
+- insert:
+    - id: opencode-go-native
+      name: dsh-opencodego

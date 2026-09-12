@@ -1,0 +1,11 @@
+node_modules/
+lib/
+dist/
+*.log
+.cache/
+.DS_Store
+__pycache__/
+*.pyc
+
+# pack artifact
+*.tgz

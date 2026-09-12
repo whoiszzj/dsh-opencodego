@@ -1,0 +1,86 @@
+{
+  "name": "dsh-opencodego",
+  "version": "0.7.0",
+  "description": "DeepSeek Harness plugin: a single provider route 'opencode-go-native' that serves every OpenCode Go (and OpenCode-style OpenAI-compatible gateway) model with the correct wire protocol per model \u2014 openai-completions / openai-responses / anthropic-messages \u2014 resolved from the models.dev per-model `provider.npm` recommendation and verified against the gateway. Capability facts are NOT assumed: a per-model SYNC asks the gateway which protocols answer, verifies the official reasoning contract (falling back to the full ladder only when there is none), and reads context/output/modalities from a bundled models.dev baseline. The model list is a plain membership list; nothing is enabled until the operator picks it. Credentials live in the host credential store. Dual-face: the host half registers the adapter, the settings section and a narrow diagnostics/discovery/sync HTTP surface; the browser half adds an OpenCode Go page with '\u83b7\u53d6\u53ef\u7528\u6a21\u578b' (pick-to-activate) and '\u4fe1\u606f\u540c\u6b65' (per-model capability sync with live progress).",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "lib",
+    "src",
+    "data/opencode-go.models.json",
+    "data/opencode-go.official.json",
+    "scripts/build-client.mjs",
+    "cordis.patch.yml",
+    "UPDATING.md",
+    "DESIGN.md",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [],
+      "external": []
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:host": "node scripts/build.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "prepack": "npm run build",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "typecheck": "node --check lib/index.js && node --check lib/client.js",
+    "models:fetch": "node scripts/fetch-models-dev.mjs",
+    "models:check": "node scripts/fetch-models-dev.mjs --check",
+    "official:fetch": "node scripts/fetch-official-baseline.mjs",
+    "official:check": "node scripts/fetch-official-baseline.mjs --check",
+    "probe:protocols": "node scripts/probe-protocols.mjs",
+    "probe:session-headers": "node scripts/probe-session-headers.mjs",
+    "probe:session-table": "node scripts/probe-session-headers.mjs --live",
+    "probe:session-regression": "node scripts/probe-session-headers.mjs --live --regression",
+    "probe:accept-phase4a": "node scripts/build.mjs && bash scripts/acceptance/phase4a-run.sh",
+    "probe:accept-phase4b": "node scripts/build.mjs && bash scripts/acceptance/phase4b-run.sh",
+    "probe:sync": "node scripts/probe-sync.mjs",
+    "prepare": "node scripts/build.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "llm",
+    "provider",
+    "opencode",
+    "opencode-go",
+    "pi-ai"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-credentials": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-settings": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-timeout": "^0.1.5-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "@earendil-works/pi-ai": "^0.85.1",
+    "react": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  }
+}
