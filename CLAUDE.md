@@ -14,7 +14,10 @@ DSH 插件,把 OpenCode Go 网关接成一个 provider route(`opencode-go-native
 ```
 src/                 宿主半边(会被 build.mjs 原样复制到 lib/)
   index.js           插件入口:注册 adapter / 设置页 / HTTP 路由
-  adapter.js         请求路径:pi-ai 调度、协议回退链、会话头
+  adapter.js         请求路径:pi-ai 调度、协议回退链、会话头(只解析"当前订阅"那一把 key)
+  subs.js            订阅层纯逻辑:归一化({id,label,hidden?})/ 每条自己的槽位派生 / "当前订阅"指针解析
+  usage.js           余额层:`GET {base}/usage` 探针 + 落盘($DSH_HOME/opencode-go.usage.json) + TTL 缓存(纯展示)
+  subruntime.js      订阅运行时:subs/active/activeKey/keyFor/syncLive/reconcile/refreshAll/refreshStale/rows/view(依赖注入,可裸测)
   protocol-map.js    provider.npm -> 协议 规则,候选链
   sync.js            能力同步引擎(协议/可用性/reasoning 探针)
   synced.js          同步结果的落盘层
@@ -22,12 +25,13 @@ src/                 宿主半边(会被 build.mjs 原样复制到 lib/)
   official-toml.js     自包含 TOML 子集解析器
   catalog.js / snapshot.js   模型集合与 provider.npm 快照
   capabilities.js    声明 -> pi-ai 的能力映射
+  base-url.js        normalizeBaseUrl(host-free,config.js 与 subs.js 共用)
   client/            浏览器半边(src/client/** -> lib/client.js)
 data/
   opencode-go.official.json   官方能力基线(构建期从 models.dev 生成)
   opencode-go.models.json     只有 name + npm(协议推荐)
 tests/               node --test,不需要装 profile
-scripts/             获取数据 / 探针
+scripts/             获取数据 / 探针 / e2e-active-sub(离线假网关验证"只有一个付款人"+ 唯一的生效变量;旧名 e2e-multi-sub 仍可跑)
 ```
 
 ## 必须守住的不变量
@@ -48,6 +52,63 @@ scripts/             获取数据 / 探针
 9. **`replaceDiscovered` 默认 `true`** —— 全新安装不加载任何模型。它必须和 `src/config.js` 的 schema 默认值保持一致,否则页面和路由对"启用集合"给出不同答案。
 10. **`data/opencode-go.models.json` 只放 `name` 和 `npm`**。能力数字一律来自同步,放回来就是制造第二个互相打架的数据源。
 11. **官方基线数字只在 `synced.js#composeEntryFaces` 合并**(由 `catalog.snapshotEntryFor` 唯一调用):只合 `contextWindow`/`maxTokens`/`inputModalities` 三个声明类字段,reasoning/protocol/interleavedField 仍归 synced 实测层;`snapshotEnabled: false` 时官方数字随快照面一起关。改这条优先级顺序 = 重新制造 200K 兜底 bug,`tests/official-capability.test.mjs` 钉着。
+12. **同一时刻只有一个"付款人"(0.8.2)/ 只有一个"生效变量"(0.8.3)**:`options.activeSubscription` 是一个
+    **标量指针**,请求路径只解析它指的那一条(`subruntime#activeKey`),发现/同步/目录也用同一把。
+    没有池、没有轮换、没有冷却、没有余额闸门——活跃那条失败就**照实报错**,绝不偷偷换成另一条。
+    换谁付是操作者的动作(设置页点一行 = 一次 settings 写),`tests/subscriptions-wiring.test.mjs`
+    把这几条静态钉住(任何 `pool.*` 回归都会红)。0.8.3 加上**镜像**:顶层 `apiKeyEnv` 是唯一对外可见的
+    "生效变量",`reconcile()`(启动 / 每次 settings 变更 / 每次 `/usage` 读)把活跃那条的 key 复制进去;
+    复制是**尽力而为**——只读(启动环境提供)就跳过并记在 `projection()` 里,**请求路径读的仍是订阅自己的槽位**,
+    所以镜像失败永远不会让请求用错 key。
+13. **失败只有一条路要守**:内容块发出之后绝不再试(`if (yielded) throw error`);发出之前失败
+    由协议链自己的重试兜底,轮不到"换 key"。旧池会在 error-finish chunk 上换 key,那条路已经删掉。
+14. **余额的真相只有网关**:`GET {base}/usage` 按 key 回答 `{rolling,weekly,monthly} × {status,percent,resetsAt}`
+    (实测记录在 probe-quota)。本插件**不做本地 token 记账**,而且 0.8.2 起余额**纯粹是展示**:
+    请求路径不读它,探测失败只是"这次没刷新"(保留上次读数 + 行上写错误)。探针的 headers 走 `index.js`
+    那个唯一合并点(thunk 注入,`usage.js` 里不许出现 `requestHeaders(`)。探针的 baseURL 来自
+    `options`(路由事实),不是 sub 自带的字段——订阅只有名字和 key。
+    **三个读法,TTL 只住在宿主**:`/usage` 不带 query = 纯缓存;`?refresh=auto` = 只测"上次成功读数比
+    `usagePollTtlMs` 更老"的那些行(`refreshStale`),这是**打开面板**要走的路;`?refresh=1` = 全测,不吃 TTL,
+    是「刷新余额」按钮这种明确动作。页面**不许自带一份 TTL**(那是操作者可配的设置,第二份就是第二个真相)。
+    **没有 key 的行两个模式都不测**(`hasKey`):空槽位背后没有余额,`Bearer undefined` 只会换来 401 并被
+    当成网关故障写在行上——而且它曾经把 `refreshAll` 整个循环打断,后面的行一个都测不到。
+15. **订阅 = 名字 + key,槽位就用名字,顶层是"生效变量"**:存的 entry 只有 `{ id, label, hidden? }`
+    (`apiKeyRef`/`baseURL`/`cap`/`enabled` 一律**报错拒绝**,不静默忽略)。每条的槽位 = `OPENCODE_GO_<名字的 slug>`
+    (`me@example.com` → `OPENCODE_GO_ME_EXAMPLE_COM`),**默认那条也一样**(名字取 `displayName`)。
+    没名字/名字里没有 A-Z0-9 的行退回 id 派生拼写(老版本存的就是它)。**改名会换槽位**,所以每行都带
+    `fallbackRefs` = [id 派生拼写]:`keyFor` 先读自己的槽位、miss 了再读兜底,`reconcile()` 的
+    `migrateSlots` 再把值**搬**进当前槽位——改名不丢密钥靠的就是这条链路(单测钉着)。客户端显示/写入的槽位
+    必须和宿主派生的一致(vocabulary 测试逐名字对比),而且**任何一行的槽位都不许等于顶层 `apiKeyEnv`**
+    (撞上就报错拒绝,否则下一次切换会把它悄悄覆盖掉)。两个同名行 = 同一个槽位 = 直接报错(名字就是地址)。
+    **默认订阅是读时合成,永不改写 settings**:`subscriptions` 里出现 `id: 'default'` 只**补丁名字**(顺带把它的
+    槽位改成新名字派生);`hidden: true` 是唯一能把它从列表里摘掉的写法(那行是合成的,没有 entry 可删),
+    槽位和密钥原样保留,表头给「恢复默认订阅」。**删除规则:当前激活那条不许删**(只剩一条时它就是当前 →
+    没有可删的行),其余每行都有删除按钮(禁用态用 tooltip 说明原因)。宿主侧:全 hidden 直接报错;
+    active 指向 hidden 时回落到第一条可见订阅。
+16. **设置页没有保存按钮(0.8.3)**:改动即写入。普通字段走 ~400ms 防抖(`flushSettings`),**密钥只在
+    blur/Enter 写**(`storeRowCredential`),点行/加删订阅/勾选模型当场写。宿主写用一条 promise 队列串行化,
+    op 列表**在任务运行时**才算(`queueSettingsWrite`)——否则后一个写会拿着过期的 revision 被宿主判冲突。
+    客户端**本地校验不过就不发**(`validateForm`),拦下来的错误必须在页面上有字(渲染不出来的校验错误 =
+    表单静默卡死;订阅级报错渲染在标题上方)。`tests/client-bundle.test.mjs` 驱动真实 bundle 钉着这条
+    (它也是唯一能证明"页面没坏"的地方)。**点击那条「默认」订阅**也要写指针:`activationWriteOps` 里默认行
+    没有 stored entry,早期实现直接返回 `[]`,于是页面显示"当前"而宿主从没收到 —— 现在只有真正的 no-op 才
+    返回 `[]`,激活之后还有一次"还脏就 `scheduleFlush(0)`"的兜底。
+    **页面别加提示行**:0.8.3 的第一版在页头挂了「改动立即生效…/正在生效…」、在订阅卡下挂了
+    「生效变量 …」,实测就是让界面变臃肿——自动保存/生效变量这类机制在点一下就能验证的行为面前不需要解释,
+    **卡片抬头显示的是"当前生效那条订阅的名字"**(不是 `displayName`,否则切走之后抬头会和「当前」行自相矛盾)、
+    手动「重新载入」只在多标签冲突时由冲突提示给出按钮。
+    **一条订阅占两行**:第一行 = 单选点 + 名字 + 「当前」+ 设置/删除,第二行 = 这条 key 的三根余额条,
+    每个胶囊**下面**写重置时间(`resetShort`;悬停是 `resetPhrase` + 本地钟点 `resetStamp`)。单行时代名被三根
+    进度条挤到几十像素、重置时间也无处安放,所以 `.ocg-meters` 用 `grid-area: 2 / 2 / 3 / -1` 落到名字下面那一行,
+    三格 `minmax(72px, 1fr)` 铺满(整张卡 `max-width: 720px`,所以一格最多 ~220px)。**没测过的窗口不写重置行**
+    (那个时刻网关根本没报过),`tests/client-bundle.test.mjs` 钉着这两条。
+17. **403 不一定是 key 错**:`classifyPiAiError` 先问 `health.js` 的分类,`region` / `data-policy` /
+    `country-block` 一律 `UNSUPPORTED_MODEL`(网关原文透传);只有 401/403 且不属于这三类才叫 `AUTH`。
+    因为聊天区把 `AUTH` 渲染成它自己的「API 密钥无效」并**丢掉网关原文**——误判一次就把"该做什么"那句话吞了
+    (实测踩过:`deepseek-v4.1-flash` 的 403 region 被说成 key 无效)。`scripts/e2e-active-sub.mjs` 第 7 节钉着。
+18. **`projection()` 绝不出值**:生效变量的**名字**、active id、失败原因可以给浏览器,**值不行**。
+    它在运行时里只用于跳过重复写入。0.8.3 第一版把它放进了 `/usage` 载荷,等于把当前 key 发给页面——
+    改回去就是把这个插件的凭据承诺作废(`tests/subruntime.test.mjs` 断言 `'value' in projection() === false`)。
 
 ## 上游有两个,互相独立
 
@@ -140,4 +201,6 @@ git ls-files -z | xargs -0 grep -In '/home/[a-z]' || echo OK
 npm run probe:sync -- kimi-k3 glm-5 omen-alpha   # 真网关跑同步:可用 / 已下架 / 无官方记录
 npm run probe:protocols                          # 协议矩阵
 npm run probe:session-headers -- --live          # 会话头实测
+npm run probe:quota -- --live                    # 余额端点实录(/usage 三窗口;唯一报告余额的地方)
+npm run e2e:multi-sub                            # 离线:假网关验证"只有一个付款人"+ 切换即生效(需 dev symlink 层)
 ```

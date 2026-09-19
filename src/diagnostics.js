@@ -130,6 +130,21 @@ export function buildDiagnosticsView(state, limits = {}) {
       // leak a secret through a wire boundary.
       legacyInlineKey: options.apiKey !== undefined,
     },
+    /**
+     * The subscription rows (0.8), straight from `subruntime#rows()`: one entry
+     * per configured key with its label, credential slot, whether it is the
+     * ACTIVE one, and the last-known usage windows. `undefined` when the adapter
+     * runs without a runtime (pre-0.8 programmatic construction) — the page then
+     * shows no subscription block rather than an empty one.
+     */
+    subscriptions: Array.isArray(state.subscriptions) ? state.subscriptions.map((row) => ({
+      id: row.id,
+      label: row.label,
+      apiKeyRef: row.apiKeyRef,
+      isDefault: row.isDefault === true,
+      active: row.active === true,
+      usage: row.usage,
+    })) : undefined,
     configuration: {
       baseURL: options.baseURL,
       apiKeyEnv: options.apiKeyEnv,
@@ -145,6 +160,8 @@ export function buildDiagnosticsView(state, limits = {}) {
       protocolMemoTtlMs: options.protocolMemoTtlMs,
       sync: options.sync === true,
       syncTtlMs: options.syncTtlMs,
+      usagePollTtlMs: options.usagePollTtlMs,
+      usageProbeTimeoutMs: options.usageProbeTimeoutMs,
       defaultContextWindow: options.defaultContextWindow,
       defaultMaxTokens: options.defaultMaxTokens,
       streamIdleTimeoutMs: options.streamIdleTimeoutMs,

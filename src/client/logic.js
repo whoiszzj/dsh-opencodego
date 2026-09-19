@@ -40,9 +40,13 @@ import {
   DEFAULT_API_KEY_ENV,
   DEFAULT_BASE_URL,
   DEFAULT_SESSION_HEADER,
+  DEFAULT_SUB_ID,
   SETTINGS_NS,
   SESSION_HEADER_MODES,
+  SUBSCRIPTION_ID_PATTERN,
   SUPPORTED_PROTOCOLS,
+  USAGE_WINDOW_KEYS,
+  USAGE_WINDOW_LABELS,
 } from './vocab.js'
 
 // ── small helpers ──────────────────────────────────────────────────────────
@@ -107,9 +111,10 @@ function stringList(value) {
 /**
  * Form-side defaults, mirrored from the host schema so a fresh namespace renders filled.
  *
- * `apiKey` is deliberately absent: it is a WRITE-ONLY staging field for the
- * credential store (see {@link credentialPlan}), so the form never pre-fills it
- * and never carries a stored secret back into a save.
+ * There is no top-level API-key cell any more: the keys belong to the
+ * subscription ROWS, and each row stages one write-only value for the credential
+ * store (see {@link stagedCredentialPlans}), so no stored secret is ever carried
+ * back into a form.
  */
 export const FORM_DEFAULTS = Object.freeze({
   baseURL: DEFAULT_BASE_URL,
@@ -119,6 +124,7 @@ export const FORM_DEFAULTS = Object.freeze({
   sessionHeaderEnabled: true,
   sessionHeaderMode: 'session-id',
   sync: false,
+  activeSubscription: DEFAULT_SUB_ID,
   // SHIPPED default: load no models until the operator picks some. Kept in step
   // with `src/config.js`, which is the value the route actually applies.
   replaceDiscovered: true,
@@ -208,10 +214,10 @@ function overrideRowFrom(id, raw) {
  * normalized into a different shape (`extra` as an id-keyed map) which is not
  * what a form edits.
  *
- * `apiKey` is the LEGACY plain-text token and is never put in the form: it is
- * reported through {@link legacyApiKeyPresent} so the page can warn, and the
- * migration removes it. The form's own `apiKey` is the staging field for a NEW
- * credential, which always starts blank.
+ * The stored `apiKey` is the LEGACY plain-text token and is never put in the
+ * form: it is reported through {@link legacyApiKeyPresent} so the page can warn,
+ * and the migration removes it. Each subscription row's own `apiKey` is a
+ * staging field for a NEW credential, which always starts blank.
  *
  * @param {object} view - one `SettingsNamespaceView`.
  * @returns {object} the form state.
@@ -228,10 +234,14 @@ export function formFromView(view) {
 
   return {
     baseURL: typeof scalar('baseURL') === 'string' ? scalar('baseURL') : FORM_DEFAULTS.baseURL,
-    apiKeyEnv: typeof scalar('apiKeyEnv') === 'string' ? scalar('apiKeyEnv') : FORM_DEFAULTS.apiKeyEnv,
+    // The default subscription's credential slot. This IS the system-default
+    // reference the whole route reads, so it is never rendered as an editable
+    // field — but a blank value in a hand-edited document falls back to the
+    // shipped default rather than becoming an unfixable validation error.
+    apiKeyEnv: typeof scalar('apiKeyEnv') === 'string' && scalar('apiKeyEnv').trim().length > 0
+      ? scalar('apiKeyEnv').trim()
+      : FORM_DEFAULTS.apiKeyEnv,
     displayName: typeof scalar('displayName') === 'string' ? scalar('displayName') : '',
-    // WRITE-ONLY staging for the credential store. Never pre-filled.
-    apiKey: '',
     sessionHeader: typeof scalar('sessionHeader') === 'string' ? scalar('sessionHeader') : FORM_DEFAULTS.sessionHeader,
     sessionHeaderEnabled: scalar('sessionHeaderEnabled') !== false,
     sessionHeaderMode: SESSION_HEADER_MODES.includes(scalar('sessionHeaderMode'))
@@ -248,7 +258,345 @@ export function formFromView(view) {
     replaceDiscovered: 'replaceDiscovered' in models
       ? models.replaceDiscovered === true
       : FORM_DEFAULTS.replaceDiscovered,
+    // The subscription rows (0.8.2). The first row is ALWAYS the implicit
+    // default — it edits the legacy top-level fields (`displayName` for its
+    // name, `apiKeyEnv` for its credential slot) rather than becoming a second
+    // copy of them. Extra entries follow in configured order.
+    subscriptions: subscriptionDraftsFrom(user, value),
+    // WHICH subscription pays. A single id, never a boolean per row: the page
+    // cannot render two "on" rows because there is nowhere to put a second one.
+    activeSubscription: typeof scalar('activeSubscription') === 'string' && scalar('activeSubscription').trim().length > 0
+      ? scalar('activeSubscription').trim()
+      : DEFAULT_SUB_ID,
   }
+}
+
+// ── subscriptions + balance (0.8) ──────────────────────────────────────────
+
+/**
+ * One stored `subscriptions[]` entry as an editable row.
+ *
+ * A subscription is a NAME and a KEY. The credential slot is DERIVED from the
+ * id (host-side `refForSubscriptionId`) and shown read-only; the stored entry
+ * carries `{ id, label }` (plus `hidden` when the row was taken off the list).
+ * Cells stay blank where the entry says nothing.
+ */
+export function subDraftFrom(raw, index) {
+  const entry = isPlainObject(raw) ? raw : {}
+  const id = typeof entry.id === 'string' ? entry.id.trim() : ''
+  return {
+    key: id.length > 0 ? id : `sub-${String(index)}`,
+    isDefault: id === DEFAULT_SUB_ID,
+    id,
+    label: typeof entry.label === 'string' ? entry.label : '',
+    // A row the operator removed from the list. It is not rendered, and it is
+    // written back with the marker so the document keeps saying so.
+    hidden: entry.hidden === true,
+    // WRITE-ONLY staging, exactly like the legacy top-level API-key field.
+    apiKey: '',
+  }
+}
+
+/**
+ * The draft's subscription rows: the implicit default row (seeded from the
+ * top-level fields it stands for), then the configured extras, with a
+ * reserved-id entry folded back into the default row.
+ *
+ * NO row carries a credential slot: each one's slot is DERIVED from its name
+ * (`subscriptionSlotOf`), so the form cannot promise a slot the host would not
+ * resolve.
+ */
+export function subscriptionDraftsFrom(user, value) {
+  const scalar = (key) => (key in user ? user[key] : value[key])
+  const rows = [{
+    key: DEFAULT_SUB_ID,
+    isDefault: true,
+    id: DEFAULT_SUB_ID,
+    label: typeof scalar('displayName') === 'string' ? scalar('displayName') : '',
+    hidden: false,
+    apiKey: '',
+  }]
+  const byKey = new Map([[DEFAULT_SUB_ID, rows[0]]])
+  for (const [index, raw] of (Array.isArray(user.subscriptions) ? user.subscriptions : []).entries()) {
+    const entry = isPlainObject(raw) ? raw : {}
+    const id = typeof entry.id === 'string' ? entry.id.trim() : ''
+    const existing = id === DEFAULT_SUB_ID ? byKey.get(id) : undefined
+    if (existing !== undefined) {
+      // ONLY the reserved id folds into the default row. A duplicated non-
+      // default id stays TWO rows so the validator can point at the second
+      // one — silently merging the operator's typo into one row would hide the
+      // exact document shape the host refuses to resolve.
+      Object.assign(existing, subDraftFrom(entry, index), { key: DEFAULT_SUB_ID, isDefault: true, id: DEFAULT_SUB_ID })
+      continue
+    }
+    const row = subDraftFrom(entry, index)
+    byKey.set(row.key, row)
+    rows.push(row)
+  }
+  return rows
+}
+
+/** A blank row for the "添加订阅" button, born with the id it will be stored under. */
+export function blankSubDraft(id) {
+  const own = typeof id === 'string' && id.trim().length > 0 ? id.trim() : 'sub-2'
+  return {
+    key: own,
+    isDefault: false,
+    id: own,
+    label: '',
+    hidden: false,
+    apiKey: '',
+  }
+}
+
+/**
+ * A fresh subscription id: `sub-2`, `sub-3`, … — the first one free.
+ *
+ * The id is minted when the ROW IS CREATED, not when it is saved, and that is
+ * load-bearing rather than cosmetic. A row's `key` in the form IS its id, and a
+ * key that changes under the draft breaks three things at once (measured):
+ * which panel is expanded, which staged secret belongs to which row, and
+ * whether the form still looks dirty after a write — the last one showed up as a
+ * 保存 button that enabled itself for no discernible reason. An id that exists
+ * from birth never moves, so none of that can drift.
+ *
+ * @param {Set<string>} taken - ids already claimed (the other rows plus `default`).
+ * @returns {string} an unused subscription id.
+ */
+export function mintSubscriptionId(taken = new Set()) {
+  let n = 2
+  while (taken.has(`sub-${String(n)}`)) n += 1
+  return `sub-${String(n)}`
+}
+
+/** The ids a form's rows already claim, `default` included. */
+function takenIds(form) {
+  const taken = new Set([DEFAULT_SUB_ID])
+  for (const row of Array.isArray(form?.subscriptions) ? form.subscriptions : []) {
+    const id = trimmed(row?.id)
+    if (id !== undefined) taken.add(id)
+  }
+  return taken
+}
+
+/**
+ * The reference-safe slug of a subscription name — the client half of the host's
+ * `subs.js#subscriptionSlug`. `tests/vocabulary.test.mjs` compares this
+ * function's output against the host's for the same names, so the two halves
+ * cannot drift.
+ *
+ * @param {string} label - the name the operator typed.
+ * @returns {string} the slug, or `''` when the name carries no usable character.
+ */
+export function subscriptionSlug(label) {
+  return String(label ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/gu, '_')
+    .replace(/^_+|_+$/gu, '')
+}
+
+/**
+ * The credential slot one row's key is stored under — its OWN slot, NAMED AFTER
+ * THE ROW, exactly as the host's `refForSubscriptionLabel` derives it. A row the
+ * operator has not named yet has nothing to derive from and falls back to the
+ * id-derived spelling, which is also what the host resolves for it.
+ *
+ * The LIVE slot (the top-level `apiKeyEnv`) is NOT this: the host overwrites it
+ * with the active row's value on every switch, so a key stored there could not
+ * survive one.
+ *
+ * @param {object} row - one draft row.
+ * @param {string} [label] - the row's EFFECTIVE name, when it lives outside the
+ *   row (the default row keeps its name in the top-level `displayName`).
+ * @returns {string} e.g. `work@example.com` → `OPENCODE_GO_WORK_EXAMPLE_COM`.
+ */
+export function subscriptionSlotOf(row, label) {
+  const own = typeof label === 'string' ? label : (typeof row?.label === 'string' ? row.label : '')
+  const slug = subscriptionSlug(own)
+  if (slug.length > 0) return `OPENCODE_GO_${slug}`
+  const id = row?.isDefault === true || row?.id === DEFAULT_SUB_ID ? DEFAULT_SUB_ID : String(row?.id ?? '')
+  return `OPENCODE_GO_${id.toUpperCase().replace(/[^A-Z0-9]+/gu, '_')}`
+}
+
+/**
+ * The rows in stored shape, with ids minted for the ones that never had one.
+ * A row that says nothing at all (the adder's blank line) is dropped, exactly
+ * like a blank `models.extra` row.
+ */
+function subscriptionEntries(form) {
+  const out = []
+  const taken = new Set([DEFAULT_SUB_ID])
+  for (const row of Array.isArray(form?.subscriptions) ? form.subscriptions : []) {
+    if (row?.isDefault === true) continue
+    const label = trimmed(row?.label)
+    if (label === undefined) continue
+    // The id is minted when the row is CREATED, so this only has to stand in for
+    // a hand-written document whose entry lost its id — where it is derived from
+    // the rows around it, deterministically, so a dirty comparison still holds.
+    const existing = trimmed(row?.id)
+    const id = existing !== undefined && !taken.has(existing) ? existing : mintSubscriptionId(taken)
+    taken.add(id)
+    out.push({ row, id, label, hidden: row.hidden === true })
+  }
+  return out
+}
+
+/**
+ * Serialize the subscription rows for storage.
+ *
+ * The DEFAULT row is normally not written at all: its name IS `displayName` and
+ * its credential slot IS `apiKeyEnv`, two top-level fields this page already
+ * edits (writing a `{ id: 'default' }` entry as well would be a second spelling
+ * of the same two facts). It IS written when the operator took that row off the
+ * list — `{ id: 'default', hidden: true }` is the only way to express that,
+ * because the host synthesizes the row from those top-level fields and there is
+ * no entry to delete. Extra rows are `{ id, label }`; the credential slot is
+ * derived from the id on the host side.
+ */
+export function subsBlockFrom(form) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  const out = []
+  const fallback = rows.find((row) => row?.isDefault === true)
+  if (fallback !== undefined && fallback.hidden === true) out.push({ id: DEFAULT_SUB_ID, hidden: true })
+  for (const { id, label, hidden } of subscriptionEntries(form)) {
+    out.push(hidden ? { id, label, hidden: true } : { id, label })
+  }
+  return out
+}
+
+/**
+ * The credential slot names the form's rows address, keyed by row key — what
+ * the page shows beside each row and what `stagedCredentialPlans` writes to.
+ */
+export function subscriptionSlots(form) {
+  const slots = new Map()
+  for (const row of Array.isArray(form?.subscriptions) ? form.subscriptions : []) {
+    // The default row's NAME is the top-level `displayName`, so its slot has to
+    // be derived from that — the row itself carries no label.
+    if (row?.isDefault === true) slots.set(row.key, subscriptionSlotOf(row, form?.displayName))
+  }
+  for (const { row, id } of subscriptionEntries(form)) {
+    slots.set(row.key, subscriptionSlotOf({ ...row, id }, row.label))
+  }
+  return slots
+}
+
+/**
+ * Patch one subscription row by its stable key (or its id, for rows whose key
+ * was minted before the id was typed — the same dual address `extra` rows use).
+ */
+export function patchSubRow(form, key, changes) {
+  const matches = (row) => row.key === key || (typeof row.id === 'string' && row.id.length > 0 && row.id === key)
+  return {
+    ...form,
+    subscriptions: (Array.isArray(form?.subscriptions) ? form.subscriptions : [])
+      .map((row) => (matches(row) ? { ...row, ...changes } : row)),
+  }
+}
+
+/** Append a fresh empty row, minting the id it keeps for the rest of its life. */
+export function addSubscriptionRow(form) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  return {
+    ...form,
+    subscriptions: [...rows, blankSubDraft(mintSubscriptionId(takenIds(form)))],
+  }
+}
+
+/**
+ * Remove one row (by key or id).
+ *
+ * The page never offers this for the ACTIVE row (it pays for every request), so
+ * the pointer only has to be repointed defensively, for a hand-built draft. The
+ * default row is HIDDEN rather than dropped — see the body for why.
+ */
+export function removeSubRow(form, key) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  const matches = (row) => row.key === key || (row.id !== '' && row.id === key)
+  const doomed = rows.find(matches)
+  if (doomed === undefined) return form
+  // The default row cannot be removed — the host synthesizes it from the
+  // top-level `apiKeyEnv` / `displayName`, so there is no entry to delete.
+  // "Deleting" it therefore HIDES it, and the credential slot it names stays
+  // where it is: the operator removed a row, not a secret.
+  const next = doomed.isDefault === true
+    ? rows.map((row) => (row === doomed ? { ...row, hidden: true } : row))
+    : rows.filter((row) => row !== doomed)
+  const visible = next.filter((row) => row.hidden !== true)
+  const stillPays = visible.some((row) => row.key === form?.activeSubscription
+    || (row.id !== '' && row.id === form?.activeSubscription))
+  return {
+    ...form,
+    subscriptions: next,
+    // The page does not let the ACTIVE row be removed, so this only fires for a
+    // hand-built draft — but leaving the pointer on a row that is gone would
+    // make the route fall back silently, which is exactly what the operator did
+    // not ask for.
+    activeSubscription: stillPays ? form?.activeSubscription : (visible[0]?.key ?? DEFAULT_SUB_ID),
+  }
+}
+
+/** Put the synthesized default row back on the list after it was hidden. */
+export function restoreDefaultRow(form) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  return {
+    ...form,
+    subscriptions: rows.map((row) => (row?.isDefault === true ? { ...row, hidden: false } : row)),
+  }
+}
+
+/** Whether the synthesized default row was taken off the list. */
+export function defaultRowHidden(form) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  return rows.some((row) => row?.isDefault === true && row.hidden === true)
+}
+
+/** Point the route at one row. The page commits this immediately (选择即激活). */
+export function activateSubscription(form, key) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  const target = rows.find((row) => row.key === key || (row.id !== '' && row.id === key))
+  if (target === undefined) return form
+  return { ...form, activeSubscription: target.key }
+}
+
+/**
+ * The one-click switch's write list: whoever pays, plus the list itself when it
+ * moved.
+ *
+ * A row that has never been saved has no stored id yet, so the pointer alone
+ * would name a row the host cannot find (it resolves an unknown id back to
+ * `default`, which is not what the click meant). Committing the LIST in the same
+ * write is what lets a freshly added row be activated with the same gesture.
+ *
+ * The reserved DEFAULT row is handled by its own branch: `subscriptionEntries`
+ * deliberately skips it (the host synthesizes that row from the top-level
+ * fields, so there is no entry to write), but its POINTER value is `default` —
+ * and returning "no ops" for it is how a click on that row used to leave the
+ * page claiming a switch the host never heard about.
+ *
+ * @param {object} clean - the snapshot the form was loaded from.
+ * @param {object} draft - the current form state.
+ * @param {string} rowKey - the row that was clicked.
+ * @returns {Array<{op: 'set', path: string[], value?: unknown}>} the ops, possibly empty.
+ */
+export function activationWriteOps(clean, draft, rowKey) {
+  const rows = Array.isArray(draft?.subscriptions) ? draft.subscriptions : []
+  const row = rows.find((entry) => entry?.key === rowKey || (entry?.id !== '' && entry?.id === rowKey))
+  if (row === undefined || row.hidden === true) return []
+  const id = row.isDefault === true || row.id === DEFAULT_SUB_ID
+    ? DEFAULT_SUB_ID
+    : subscriptionEntries(draft).find((entry) => entry.row.key === row.key)?.id
+  // A non-default row with no name yet has no id to point at; the caller asks for
+  // the name first, so reaching here means the document is not writable.
+  if (id === undefined) return []
+  const ops = []
+  if (!deepEqual(subsBlockFrom(clean), subsBlockFrom(draft))) {
+    ops.push({ op: 'set', path: ['subscriptions'], value: subsBlockFrom(draft) })
+  }
+  if (clean?.activeSubscription !== id) {
+    ops.push({ op: 'set', path: ['activeSubscription'], value: id })
+  }
+  return ops
 }
 
 /** A blank extra row, for the "add a model" button. */
@@ -663,15 +1011,12 @@ export function validateForm(form) {
   if (apiKeyEnv === undefined) {
     errors.apiKeyEnv = '必填：凭据引用名（环境变量名），例如 OPENCODE_GO_API_KEY'
   } else if (looksLikeSecretValue(form.apiKeyEnv)) {
-    errors.apiKeyEnv = '这看起来是 key 本身；引用名只能填环境变量名，key 请填上面的“API 密钥”字段'
+    errors.apiKeyEnv = '这看起来是 key 本身；凭据引用名只能填环境变量名，密钥请填在订阅行的“API 密钥”格里'
   }
 
-  // The staged credential value. Blank means "leave the stored one alone"; only
-  // a value that could never reach an HTTP header is refused.
-  const stagedKey = typeof form?.apiKey === 'string' ? form.apiKey : ''
-  if (stagedKey.trim().length > 0 && !isUsableApiKey(stagedKey)) {
-    errors.apiKey = '这个值不能放进 HTTP 头（含控制字符或换行）；粘贴原始 token'
-  }
+  // The staged credential values live on the subscription ROWS
+  // (`validateSubscriptions` below): there is no top-level API-key cell any
+  // more, because the top of the page is the subscription list itself.
 
   if (form?.sessionHeaderEnabled !== false) {
     const header = form?.sessionHeader
@@ -775,7 +1120,59 @@ export function validateForm(form) {
     }
   }
 
+
+  validateSubscriptions(form, errors)
+
   return errors
+}
+
+/**
+ * Subscription rows (0.8.2): a NAME per row (the id and the credential slot are
+ * derived from it), no duplicate names, and a staged key the HTTP layer can
+ * carry. A blank adder row is treated exactly like a blank `extra` row: silent
+ * while empty, refused once it claims anything.
+ */
+function validateSubscriptions(form, errors) {
+  const rows = Array.isArray(form?.subscriptions) ? form.subscriptions : []
+  const visible = rows.filter((row) => row?.hidden !== true)
+  const seenLabels = new Set()
+  const active = typeof form?.activeSubscription === 'string' ? form.activeSubscription : DEFAULT_SUB_ID
+  for (const [index, row] of rows.entries()) {
+    const path = `subscriptions[${String(index)}]`
+    if (row?.hidden === true) continue
+    const label = trimmed(row?.label)
+    const staged = typeof row?.apiKey === 'string' ? row.apiKey : ''
+    if (row?.isDefault !== true) {
+      const claims = label !== undefined || staged.trim().length > 0
+      if (label === undefined) {
+        if (claims) errors[`${path}.label`] = '必填：这条订阅的名字'
+      } else if (seenLabels.has(label)) {
+        errors[`${path}.label`] = `与前面某条订阅重名（${label}）`
+      } else {
+        seenLabels.add(label)
+      }
+      const existingId = trimmed(row?.id)
+      if (existingId !== undefined && !SUBSCRIPTION_ID_PATTERN.test(existingId)) {
+        errors[`${path}.label`] = `内部 id 不合法（${existingId}）：改名或删掉重加`
+      }
+    }
+    if (staged.trim().length > 0 && !isUsableApiKey(staged)) {
+      errors[`${path}.apiKey`] = '这个值不能放进 HTTP 头（含控制字符或换行）'
+    }
+  }
+  // The route needs ONE payer. An ABSENT `subscriptions` array is not "nothing
+  // configured": the host always synthesizes the default row from `apiKeyEnv`,
+  // so only a list that exists and has every row hidden is a dead end.
+  if (rows.length > 0 && visible.length === 0) {
+    errors.subscriptions = '至少要保留一条订阅'
+    return
+  }
+  const pays = rows.length === 0
+    ? active === DEFAULT_SUB_ID
+    : visible.some((row) => row?.key === active || (row?.id !== undefined && row.id !== '' && row.id === active))
+  if (!pays) {
+    errors.activeSubscription = `当前订阅（${active}）不在列表里；点一行重新选`
+  }
 }
 
 /**
@@ -875,6 +1272,12 @@ export function errorPathsOf(message) {
   if (/models\.replaceDiscovered/u.test(text)) push('models.replaceDiscovered')
   // A bare `models` rejection (unknown key, wrong shape) belongs to the section.
   else if (/models(?![.\w[])/u.test(text)) push('models')
+  // `subscriptions[0].id` / `subscriptions["work"].cap` → one spelling per row
+  // (id refs and index refs both resolve through `rowIndexFor(rows, ref)`).
+  for (const match of text.matchAll(/subscriptions\[(?:"([^"]*)"|(\d+))\]/gu)) {
+    push(`subscriptions[${match[2] ?? match[1]}]`)
+  }
+  if (/subscriptions(?![.\w[])/u.test(text)) push('subscriptions')
   if (/sessionHeaderMode/u.test(text)) push('sessionHeaderMode')
   else if (/sessionHeader/u.test(text)) push('sessionHeader')
   // `apiKeyEnv` first: a message naming the reference must not land on the
@@ -918,22 +1321,180 @@ export function isDirty(clean, draft) {
 }
 
 /**
- * The credential write one save owes, or `undefined` when it owes none.
+ * The credential writes the form owes: one per row whose key was just typed.
  *
- * The API-key field is NOT part of the settings document: its value goes to the
- * credential store under the reference the draft names. Keeping that a separate
- * plan (rather than another path op) is what stops a secret from ever entering
- * `writeOps`.
+ * The reference is the row's derived slot (`subscriptionSlotOf`), never a value
+ * the operator typed — the secret goes to the credential store and the settings
+ * document records nothing about it at all. A row with no name yet has no slot
+ * to write to and is skipped (its key stays staged in the form).
  *
  * @param {object} form - the form state.
- * @returns {{reference: string, value: string} | undefined} the credential to store.
+ * @returns {Array<{reference: string, value: string, label: string}>} the plans.
  */
-export function credentialPlan(form) {
-  const value = typeof form?.apiKey === 'string' ? form.apiKey.trim() : ''
-  if (value.length === 0) return undefined
-  const reference = trimmed(form?.apiKeyEnv)
-  if (reference === undefined) return undefined
-  return { reference, value }
+export function stagedCredentialPlans(form) {
+  const slots = subscriptionSlots(form)
+  const plans = []
+  for (const row of Array.isArray(form?.subscriptions) ? form.subscriptions : []) {
+    const value = typeof row?.apiKey === 'string' ? row.apiKey.trim() : ''
+    if (value.length === 0) continue
+    const reference = slots.get(row.key)
+    if (typeof reference !== 'string' || reference.length === 0) continue
+    plans.push({ reference, value, label: trimmed(row?.label) ?? reference, key: row.key })
+  }
+  return plans
+}
+
+/**
+ * The write plan for ONE row's just-typed key, if it has one.
+ *
+ * Used by the one-click switch: the editor is a draft, but a key the operator
+ * typed and then clicked away from must reach the store BEFORE the pointer moves,
+ * or the row they just selected would serve with the previous key. Returns
+ * `undefined` when that row has nothing staged.
+ *
+ * @param {object} form - the form state.
+ * @param {string} rowKey - the row whose panel was open.
+ * @returns {{reference: string, value: string, label: string, key: string} | undefined} the plan.
+ */
+export function stagedCredentialPlanFor(form, rowKey) {
+  return stagedCredentialPlans(form).find((plan) => plan.key === rowKey)
+}
+
+/**
+ * The `GET /opencode-go-native/usage` answer, defensively read (the same
+ * whitelist discipline as {@link catalogueView} — a field not listed here is
+ * a field the page cannot see; invariant #6).
+ */
+export function usageView(payload) {
+  const body = unwrapPayload(payload)
+  const subs = Array.isArray(body.subs) ? body.subs : []
+  return {
+    refreshError: typeof body.refreshError === 'string' && body.refreshError.length > 0 ? body.refreshError : undefined,
+    subs: subs
+      .filter(isPlainObject)
+      .map((row) => ({
+        id: typeof row.id === 'string' ? row.id : '',
+        label: typeof row.label === 'string' ? row.label : '',
+        apiKeyRef: typeof row.apiKeyRef === 'string' ? row.apiKeyRef : '',
+        // The spellings this row's key may still live under (a rename, or an
+        // upgrade). Whitelisted because "清空这条订阅的密钥" has to remove ALL of
+        // them: leaving an older copy behind would quietly resurrect it.
+        fallbackRefs: Array.isArray(row.fallbackRefs)
+          ? row.fallbackRefs.filter((ref) => typeof ref === 'string' && ref.length > 0)
+          : [],
+        isDefault: row.isDefault === true,
+        active: row.active === true,
+        configured: typeof row.configured === 'boolean' ? row.configured : undefined,
+        source: typeof row.source === 'string' && row.source.length > 0 ? row.source : undefined,
+        usage: {
+          windows: isPlainObject(row.usage?.windows) ? row.usage.windows : undefined,
+          checkedAt: typeof row.usage?.checkedAt === 'number' ? row.usage.checkedAt : undefined,
+          ageMs: typeof row.usage?.ageMs === 'number' ? row.usage.ageMs : undefined,
+          error: typeof row.usage?.error === 'string' && row.usage.error.length > 0 ? row.usage.error : undefined,
+        },
+      })),
+  }
+}
+
+/**
+ * The balance bars one subscription row renders: one per KNOWN window, each with
+ * its percent, the gateway's status, and a tone. "Nearly spent" (>= 85%, or any
+ * non-`ok` status) reads as warn/bad — the page's promise is that a RED bar is a
+ * window the gateway says is done, an AMBER one is about to be, and a missing
+ * bar means nothing has been measured yet.
+ *
+ * @param {object} sub - one `usageView(...).subs` row.
+ * @returns {Array<{window: string, label: string, percent: number | undefined, status: string | undefined, resetsAt: string | undefined, tone: string}>}
+ */
+export function balanceCells(sub) {
+  const windows = isPlainObject(sub?.usage?.windows) ? sub.usage.windows : undefined
+  const out = []
+  for (const name of USAGE_WINDOW_KEYS) {
+    const entry = windows?.[name]
+    if (!isPlainObject(entry)) continue
+    const percent = typeof entry.percent === 'number' && Number.isFinite(entry.percent)
+      ? Math.round(entry.percent)
+      : undefined
+    const status = typeof entry.status === 'string' ? entry.status : undefined
+    let tone = 'ok'
+    if (status !== undefined && status !== 'ok') tone = 'bad'
+    else if (percent === undefined) tone = 'dim'
+    else if (percent >= 85) tone = 'warn'
+    out.push({
+      window: name,
+      label: USAGE_WINDOW_LABELS[name] ?? name,
+      percent,
+      status,
+      resetsAt: typeof entry.resetsAt === 'string' ? entry.resetsAt : undefined,
+      tone,
+    })
+  }
+  return out
+}
+
+/**
+ * How far away a reset is, rounded to whole minutes. `undefined` means the
+ * gateway did not give a moment this page can read — one parse, so the two
+ * phrasings below can never disagree about WHEN a window resets, only about how
+ * much room they have to say it.
+ *
+ * @param {string | undefined} iso - the gateway's `resetsAt`.
+ * @param {number} now - the clock.
+ * @returns {{minutes: number} | undefined} minutes until the reset (`<= 0` = due).
+ */
+function resetGap(iso, now) {
+  if (typeof iso !== 'string') return undefined
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return undefined
+  return { minutes: Math.round((at - now) / 60_000) }
+}
+
+/**
+ * A reset time as the full human sentence — the tooltip's wording.
+ * @param {string | undefined} iso - the gateway's `resetsAt`.
+ * @param {number} [now] - the clock.
+ * @returns {string | undefined} e.g. `约 3 小时后重置`.
+ */
+export function resetPhrase(iso, now = Date.now()) {
+  const gap = resetGap(iso, now)
+  if (gap === undefined) return undefined
+  if (gap.minutes <= 0) return '即将重置'
+  if (gap.minutes < 60) return `约 ${String(gap.minutes)} 分钟后重置`
+  if (gap.minutes < 60 * 24) return `约 ${String(Math.round(gap.minutes / 60))} 小时后重置`
+  return `约 ${String(Math.round(gap.minutes / (60 * 24)))} 天后重置`
+}
+
+/**
+ * The same fact in the space UNDER one balance pill — the row already says which
+ * window it is, so the phrase only has to answer "when", in the fewest glyphs
+ * that stay a sentence (`3 小时后`, not `约 3 小时后重置`).
+ *
+ * @param {string | undefined} iso - the gateway's `resetsAt`.
+ * @param {number} [now] - the clock.
+ * @returns {string | undefined} e.g. `3 小时后`.
+ */
+export function resetShort(iso, now = Date.now()) {
+  const gap = resetGap(iso, now)
+  if (gap === undefined) return undefined
+  if (gap.minutes <= 0) return '即将重置'
+  if (gap.minutes < 60) return `${String(gap.minutes)} 分钟后`
+  if (gap.minutes < 60 * 24) return `${String(Math.round(gap.minutes / 60))} 小时后`
+  return `${String(Math.round(gap.minutes / (60 * 24)))} 天后`
+}
+
+/**
+ * The reset moment as a local wall-clock stamp (`09-24 08:00`) — the hovering
+ * reader can then stop converting "20 天后" into a date in their head.
+ *
+ * @param {string | undefined} iso - the gateway's `resetsAt`.
+ * @returns {string | undefined} the local `MM-DD HH:mm`, or undefined if unreadable.
+ */
+export function resetStamp(iso) {
+  if (typeof iso !== 'string') return undefined
+  const at = new Date(iso)
+  if (!Number.isFinite(at.getTime())) return undefined
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`
 }
 
 /**
@@ -950,7 +1511,7 @@ export function credentialPlan(form) {
  */
 export function writeOps(clean, draft) {
   const ops = []
-  const keys = ['baseURL', 'apiKeyEnv', 'displayName', 'sessionHeader', 'sessionHeaderEnabled', 'sessionHeaderMode', 'sync']
+  const keys = ['baseURL', 'apiKeyEnv', 'displayName', 'sessionHeader', 'sessionHeaderEnabled', 'sessionHeaderMode', 'sync', 'activeSubscription']
   for (const key of keys) {
     if (deepEqual(clean?.[key], draft?.[key])) continue
     if (draft?.[key] === undefined) {
@@ -961,6 +1522,14 @@ export function writeOps(clean, draft) {
       continue
     }
     ops.push({ op: 'set', path: [key], value: draft[key] })
+  }
+
+  // The subscription list (0.8.2) writes as ONE whole-array set: rows are added
+  // and removed atomically, and the ids are minted here (from the names) the
+  // first time a row is stored. An untouched document still writes NOTHING — the
+  // pre-0.8 shape is the default shape, not an empty array.
+  if (!deepEqual(subsBlockFrom(clean), subsBlockFrom(draft))) {
+    ops.push({ op: 'set', path: ['subscriptions'], value: subsBlockFrom(draft) })
   }
 
   if (!deepEqual(modelsBlockFrom(clean), modelsBlockFrom(draft))) {
@@ -1009,7 +1578,7 @@ export function modelsWriteOps(clean, draft) {
  * @returns {object} the new draft.
  */
 export function preserveDraftScalars(savedForm, draft) {
-  const keys = ['baseURL', 'apiKeyEnv', 'displayName', 'sessionHeader', 'sessionHeaderEnabled', 'sessionHeaderMode', 'sync', 'apiKey']
+  const keys = ['baseURL', 'apiKeyEnv', 'displayName', 'sessionHeader', 'sessionHeaderEnabled', 'sessionHeaderMode', 'sync', 'activeSubscription', 'subscriptions']
   const out = { ...savedForm }
   for (const key of keys) if (draft !== undefined && key in draft) out[key] = draft[key]
   return out
@@ -1060,6 +1629,10 @@ export function diagnosticsView(payload) {
     at: diagnostics.at,
     connection: isPlainObject(diagnostics.connection) ? diagnostics.connection : {},
     configuration: isPlainObject(diagnostics.configuration) ? diagnostics.configuration : {},
+    // The subscription rows ride the diagnostics payload too (0.8). Whitelisted
+    // explicitly: a field not named here is a field the page cannot see
+    // (invariant #6 — the `synced` flag once disappeared exactly this way).
+    subscriptions: Array.isArray(diagnostics.subscriptions) ? diagnostics.subscriptions : [],
     catalogue: isPlainObject(diagnostics.catalogue) ? diagnostics.catalogue : {},
     health: Array.isArray(diagnostics.health?.rows) ? diagnostics.health.rows : [],
     unusable: Array.isArray(diagnostics.health?.unusable) ? diagnostics.health.unusable : [],
@@ -1222,7 +1795,7 @@ function effectiveFactsOf(model) {
  * @returns {string} the hint text.
  */
 export function modelSourceLine() {
-  return '模型名单来自网关 /models；能力值是插件保存的模型状态（未校正的用保守默认），展开行可改，改完即生效。'
+  return '模型名单来自网关 /models；能力值取插件保存的模型状态，未校正的用保守默认。'
 }
 
 // ── capability sync ─────────────────────────────────────────────────────────

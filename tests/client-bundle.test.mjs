@@ -59,6 +59,36 @@ async function drainMicrotasks() {
 }
 
 /**
+ * Wait out the page's auto-save debounce, drain what it queued, and re-render.
+ *
+ * The page has no 保存 button any more: a change IS the commit, batched by a
+ * ~400ms debounce. A test that types into a field therefore has to let that
+ * timer fire — and it is the REAL timer, so this is the same path a browser
+ * takes. `ms` is a knob for the immediate acts (add/remove/restore), which
+ * schedule with a zero-length delay.
+ */
+async function settleWrites(page, ms = 450) {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+  await drainMicrotasks()
+  return page.reload()
+}
+
+/**
+ * Rename the DEFAULT subscription through its own row: the page has no separate
+ * `displayName` control any more, so the name lives where the subscription does.
+ * @param {object} page - the harness page.
+ * @param {string} value - the new name.
+ */
+async function renameDefault(page, value) {
+  if (page.control('subscriptions[0].label') === undefined) {
+    page.control('subscriptions[0].toggle').props.onClick()
+    await page.reload()
+  }
+  page.control('subscriptions[0].label').props.onChange({ target: { value } })
+  await page.reload()
+}
+
+/**
  * A `react` stand-in with just enough fidelity to drive one section: hooks keep
  * state across renders, `useEffect` runs synchronously, and `createElement`
  * builds a plain tree that can be searched as text.
@@ -308,6 +338,7 @@ async function harness({
   failDiscover,
   failCredentialSet,
   sync,
+  usage,
 } = {}) {
   const { factory } = await loadRegistration()
   const calls = { describe: 0, mutate: [], catalogue: [], discover: [], urls: [], credentialSet: [], credentialUnset: [], credentialDescribe: [] }
@@ -400,6 +431,7 @@ async function harness({
   const originalFetch = globalThis.fetch
   let catalogueAnswer
   let diagnosticsAnswer
+  let usageAnswer
   globalThis.fetch = async (url, options) => {
     calls.urls.push({ url, options })
     const absolute = String(url)
@@ -409,6 +441,10 @@ async function harness({
       const answer = typeof sync === 'function' ? sync(wanted) : sync?.[wanted]
       if (answer === undefined) return { status: 200, json: async () => ({ ok: false, error: { code: 'SYNC_FAILED', message: `no sync fixture for ${wanted}` } }) }
       return { status: 200, json: async () => ({ ok: true, sync: answer, saved: '/tmp/opencode-go.synced.json' }) }
+    }
+    if (absolute.includes('/opencode-go-native/usage')) {
+      usageAnswer ??= usage ?? { ok: true, subs: [] }
+      return { status: 200, json: async () => usageAnswer }
     }
     if (absolute.includes('/diagnostics')) {
       if (diagnostics === undefined) throw new Error('no diagnostics fixture')
@@ -517,7 +553,7 @@ test('apply() registers exactly one settings.section with our id and label', asy
   assert.equal(page.registration.options.label(), 'OpenCode Go')
   const face = page.registration.options.inject()
   assert.equal(face.settingsNamespace, 'opencode-go-native')
-  for (const method of ['describeSettings', 'mutateSettings', 'describeCredential', 'storeCredential', 'removeCredential', 'catalogue', 'discoverDraft', 'diagnostics']) {
+  for (const method of ['describeSettings', 'mutateSettings', 'storeCredential', 'removeCredential', 'catalogue', 'discoverDraft', 'diagnostics', 'usage']) {
     assert.equal(typeof face.api[method], 'function', method)
   }
   page.restore()
@@ -525,37 +561,62 @@ test('apply() registers exactly one settings.section with our id and label', asy
 
 // ── reading the settings ───────────────────────────────────────────────────
 
-test('the section reads its namespace and renders the connection card with the credential state', async () => {
-  const page = await harness({ credential: { configured: true, source: 'file', writable: true } })
+test('the section reads its namespace and renders the subscription list as the page top', async () => {
+  const page = await harness({
+    usage: {
+      ok: true,
+      subs: [{
+        id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_API_KEY', isDefault: true, active: true,
+        configured: true, source: 'file', usage: {},
+      }],
+    },
+  })
   assert.equal(page.calls.describe, 1)
   assert.match(page.text, /OpenCode Go/u)
-  // The namespace/revision meta line and the credential-reference field are GONE:
-  // the default reference works behind the API-key field, and there is nothing
-  // there for an operator to edit. The page is content, not plumbing.
+  // The namespace/revision meta line is GONE, and there is no STANDALONE
+  // reference or key input: since 0.8.2 the top of the page IS the subscription
+  // list, one row per key, and everything about a key lives in its row.
   assert.ok(!page.text.includes('revision'), 'no revision meta on the page')
   assert.ok(!page.text.includes('命名空间'), 'no namespace meta on the page')
-  assert.ok(!page.text.includes('凭据引用名'), 'the reference field is not rendered')
-  assert.equal(page.control('apiKeyEnv'), undefined)
+  assert.equal(page.control('apiKeyEnv'), undefined, 'no bare top-level reference control')
+  assert.equal(page.control('apiKey'), undefined, 'no bare top-level API-key control')
+  assert.notEqual(page.control('subscriptions[0].toggle'), undefined, 'the default subscription row exists')
+  assert.equal(page.control('subs.title').children[0], '订阅', 'the list is the page top')
+  assert.equal(page.control('subs.count').children[0], '1')
+  page.control('subscriptions[0].toggle').props.onClick()
+  await page.reload()
+  assert.notEqual(page.control('subscriptions[0].apiKey'), undefined, 'the expanded default row carries the key field')
+  assert.notEqual(page.control('subscriptions[0].slot'), undefined, 'and names the credential slot it writes to')
   // The credential VALUE never appears: the page only knows the state.
-  assert.match(page.text, /凭据状态：已配置/u)
-  assert.match(page.text, /来源 file/u)
+  assert.match(page.text, /已存密钥/u, 'the stored/not-stored fact is a one-word pill')
+  assert.ok(
+    page.find((node) => typeof node.props?.title === 'string' && /来源 file/.test(node.props.title)).length > 0,
+    'where the value came from stays in the tooltip',
+  )
   assert.match(page.text, /凭据存储/u)
-  assert.match(page.text, /\.credentials\.yaml/u)
+  assert.ok(
+    page.find((node) => typeof node.props?.title === 'string' && /\.credentials\.yaml/.test(node.props.title)).length > 0,
+    'the exact store path stays one hover away',
+  )
   // The key field is a password input whose own VALUE is empty.
-  const key = page.control('apiKey')
-  assert.ok(key !== undefined, 'the 连接 card must render the API-key control')
+  const key = page.control('subscriptions[0].apiKey')
   assert.equal(key.props.type, 'password')
   assert.equal(key.props.value, '')
-  assert.equal(key.props.placeholder, '已配置——输入新值可替换')
-  assert.ok(page.control('action.clearCredential') !== undefined, 'a configured credential can be cleared')
+  assert.ok(page.control('subscriptions[0].clearCredential') !== undefined, 'a configured credential can be cleared')
   page.restore()
 })
 
 test('an unconfigured credential says so and offers no clear button', async () => {
-  const page = await harness()
-  assert.match(page.text, /凭据状态：未配置/u)
-  assert.equal(page.control('apiKey').props.placeholder, '输入 API 密钥')
-  assert.equal(page.control('action.clearCredential'), undefined)
+  const page = await harness({
+    usage: {
+      ok: true,
+      subs: [{ id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_API_KEY', isDefault: true, active: true, configured: false, usage: {} }],
+    },
+  })
+  page.control('subscriptions[0].toggle').props.onClick()
+  await page.reload()
+  assert.match(page.text, /未存密钥/u)
+  assert.equal(page.control('subscriptions[0].clearCredential'), undefined)
   page.restore()
 })
 
@@ -567,7 +628,11 @@ test('a pre-0.6.0 plain-text apiKey is warned about, never rendered', async () =
     }),
   })
   assert.match(page.text, /设置文件里还有旧版的明文 apiKey/u)
-  assert.equal(page.control('apiKey').props.value, '', 'neither the staged field nor any input holds the legacy token')
+  // No control on the page carries the legacy token, expanded or not.
+  page.control('subscriptions[0].toggle').props.onClick()
+  await page.reload()
+  const values = page.find((node) => typeof node.props?.value === 'string').map((node) => node.props.value)
+  assert.ok(!values.some((value) => value.includes('sk-LEGACY')), 'the legacy token is never rendered into a control')
   page.restore()
 })
 
@@ -688,7 +753,7 @@ test('every listed model shows its EFFECTIVE numbers — no catalog-membership l
 
 test('the source line names the two layers, and a failed gateway refresh is shown', async () => {
   const page = await harness({ catalogue: [modelOf('alpha')] })
-  assert.match(page.text, /模型名单来自网关 \/models；能力值是插件保存的模型状态/u)
+  assert.match(page.text, /模型名单来自网关 \/models；能力值取插件保存的模型状态/u)
   assert.equal(page.control('action.resetModels'), undefined, 'there is no reset affordance any more')
   page.restore()
   const stale = await harness({
@@ -726,11 +791,10 @@ test('editing an expanded advertised row writes an override into the draft', asy
   page.control('model.alpha.maxTokens').props.onChange({ target: { value: '4096' } })
   await page.reload()
   assert.equal(page.control('model.alpha.maxTokens').props.value, '4096')
-  // Save: the override lands as models.overrides, never as an extra row.
-  const save = page.control('action.save')
-  assert.equal(save.props.disabled, false)
-  await save.props.onClick()
-  await drainMicrotasks()
+  // No save button: the edit commits itself once the operator pauses. The
+  // override lands as models.overrides, never as an extra row.
+  assert.equal(page.control('action.save'), undefined, 'the 保存 button is gone: a change IS the commit')
+  await settleWrites(page)
   assert.equal(page.calls.mutate.length, 1)
   const ops = page.calls.mutate[0].ops
   assert.ok(ops.some((op) => op.path.join('.') === 'models.overrides' && op.value.alpha.maxTokens === 4096))
@@ -808,22 +872,26 @@ test('sessionHeaderMode offers exactly the host union', async () => {
 
 // ── writes ─────────────────────────────────────────────────────────────────
 
-test('a save writes only the moved fields, with the revision it read', async () => {
+test('an edit writes only the moved fields, with the revision it read', async () => {
   const page = await harness()
-  const nameBox = page.control('displayName')
+  // The default subscription's name is edited in its own row (the page keeps no
+  // separate `displayName` control).
+  page.control('subscriptions[0].toggle').props.onClick()
+  await page.reload()
+  const nameBox = page.control('subscriptions[0].label')
   assert.equal(nameBox.props.value, '')
   nameBox.props.onChange({ target: { value: 'renamed' } })
   await page.reload()
-  const saveButton = page.control('action.save')
-  assert.ok(saveButton !== undefined)
-  assert.equal(saveButton.props.disabled, false, 'the save button must enable once the draft is dirty')
-  await saveButton.props.onClick()
-  await drainMicrotasks()
+  // No button to press: the edit commits itself, with the revision it read.
+  await settleWrites(page)
   assert.equal(page.calls.mutate.length, 1)
   assert.equal(page.calls.mutate[0].ns, 'opencode-go-native')
   assert.equal(page.calls.mutate[0].revision, 11)
   assert.deepEqual(page.calls.mutate[0].ops, [{ op: 'set', path: ['displayName'], value: 'renamed' }])
   assert.deepEqual(page.calls.credentialSet, [], 'no credential was staged, so none is written')
+  // The reply is adopted as the new baseline, so nothing is written twice.
+  await settleWrites(page)
+  assert.equal(page.calls.mutate.length, 1, 'a settled form writes nothing more')
   page.restore()
 })
 
@@ -832,81 +900,115 @@ test('a client-side validation failure blocks the write and names the control', 
   const header = page.control('sessionHeader')
   header.props.onChange({ target: { value: 'x session' } })
   await page.reload()
-  const saveButton = page.control('action.save')
-  await saveButton.props.onClick()
+  await settleWrites(page)
   assert.equal(page.calls.mutate.length, 0, 'nothing may be written while the draft is invalid')
   assert.match(page.text, /不是合法的 HTTP 头名/u)
-  assert.match(page.text, /有字段没通过校验|RFC 7230/u)
+  assert.match(page.text, /RFC 7230/u)
   page.restore()
 })
 
-test('typing an API key and saving stores the credential, and never puts it in the settings ops', async () => {
+test('typing an API key and leaving the field stores the credential, and never puts it in the settings ops', async () => {
   const page = await harness()
-  const key = page.control('apiKey')
+  page.control('subscriptions[0].toggle').props.onClick()
+  await page.reload()
+  const key = page.control('subscriptions[0].apiKey')
   const SENTINEL = 'sk-SENTINEL-not-a-real-key'
   key.props.onChange({ target: { value: SENTINEL } })
   await page.reload()
-  const saveButton = page.control('action.save')
-  assert.equal(saveButton.props.disabled, false, 'a staged key must enable the save button')
-  await saveButton.props.onClick()
+  // Leaving the field (or Enter) is what stores it — never a keystroke, and
+  // never a 保存 button.
+  page.control('subscriptions[0].apiKey').props.onBlur()
   await drainMicrotasks()
   await page.reload()
-  // The settings half owes nothing: the reference is already what the document
-  // says, and the secret must never appear in a settings op.
+  // The settings half owes nothing: the credential slot is derived from the
+  // subscription's NAME (here it has none, so the id-derived spelling), and the
+  // secret must never appear in a settings op.
   assert.deepEqual(page.calls.mutate, [])
-  assert.deepEqual(page.calls.credentialSet, [{ ref: 'OPENCODE_GO_API_KEY', value: SENTINEL }])
-  assert.match(page.text, /已保存 凭据 OPENCODE_GO_API_KEY/u)
-  assert.equal(page.control('apiKey').props.value, '', 'the staged secret is not kept in the form')
+  assert.deepEqual(page.calls.credentialSet, [{ ref: 'OPENCODE_GO_DEFAULT', value: SENTINEL }])
+  assert.equal(page.control('subscriptions[0].apiKey').props.value, '', 'the staged secret is not kept in the form')
   page.restore()
 })
 
-test('a settings change and a staged key are saved as two different writes, settings first', async () => {
+test('a settings change and a staged key are two different writes', async () => {
   const page = await harness()
-  page.control('displayName').props.onChange({ target: { value: 'renamed' } })
-  page.control('apiKey').props.onChange({ target: { value: 'sk-SENTINEL-not-a-real-key' } })
+  page.control('subscriptions[0].toggle').props.onClick()
   await page.reload()
-  await page.control('action.save').props.onClick()
+  page.control('subscriptions[0].label').props.onChange({ target: { value: 'renamed' } })
+  await page.reload()
+  page.control('subscriptions[0].apiKey').props.onChange({ target: { value: 'sk-SENTINEL-not-a-real-key' } })
+  await page.reload()
+  // The secret is stored by leaving its field; the name by the debounce. Two
+  // independent acts, and the settings op never carries the secret. The slot
+  // follows the NAME, so the key lands under the renamed row's slot.
+  page.control('subscriptions[0].apiKey').props.onBlur()
   await drainMicrotasks()
+  await settleWrites(page)
   assert.equal(page.calls.mutate.length, 1)
   assert.deepEqual(page.calls.mutate[0].ops, [{ op: 'set', path: ['displayName'], value: 'renamed' }])
-  assert.deepEqual(page.calls.credentialSet, [{ ref: 'OPENCODE_GO_API_KEY', value: 'sk-SENTINEL-not-a-real-key' }])
+  assert.deepEqual(page.calls.credentialSet, [{ ref: 'OPENCODE_GO_RENAMED', value: 'sk-SENTINEL-not-a-real-key' }])
   page.restore()
 })
 
-test('a refused credential write is reported, keeps the typed key, and does not repeat the settings write', async () => {
+test('a refused credential write is reported and keeps the typed key', async () => {
   const page = await harness({ failCredentialSet: Object.assign(new Error('reference is shadowed by the environment'), { code: 'credentials/read-only' }) })
   const SENTINEL = 'sk-SENTINEL-not-a-real-key'
-  // A settings change AND a staged key in one save: settings first, credential
-  // second. The second half is refused.
-  page.control('displayName').props.onChange({ target: { value: 'renamed' } })
-  page.control('apiKey').props.onChange({ target: { value: SENTINEL } })
+  page.control('subscriptions[0].toggle').props.onClick()
   await page.reload()
-  await page.control('action.save').props.onClick()
+  page.control('subscriptions[0].apiKey').props.onChange({ target: { value: SENTINEL } })
+  await page.reload()
+  page.control('subscriptions[0].apiKey').props.onBlur()
   await drainMicrotasks()
   await page.reload()
   assert.match(page.text, /密钥没写进凭据存储/u)
   assert.match(page.text, /shadowed by the environment/u)
-  assert.equal(page.calls.mutate.length, 1, 'the settings half stands')
   // The key the operator typed is STILL in the form: dropping it here would make
   // a refusal cost them the secret they just pasted.
-  assert.equal(page.control('apiKey').props.value, SENTINEL)
-  // Retry: the credential is attempted again, the settings are not re-written.
-  await page.control('action.save').props.onClick()
+  assert.equal(page.control('subscriptions[0].apiKey').props.value, SENTINEL)
+  // Retry: leaving the field again attempts the credential once more.
+  page.control('subscriptions[0].apiKey').props.onBlur()
   await drainMicrotasks()
-  assert.equal(page.calls.mutate.length, 1, 'the settings write must not be repeated')
   assert.equal(page.calls.credentialSet.length, 2, 'the credential write is retried')
   page.restore()
 })
 
-test('清除已存密钥 removes the credential and says what could still shadow it', async () => {
-  const page = await harness({ credential: { configured: true, source: 'env', writable: false } })
-  const clear = page.control('action.clearCredential')
+test('清除已存密钥 removes EVERY spelling of one row’s credential, and never writes settings', async () => {
+  const subscriptions = [{ id: 'sub-2', label: 'work@example.com' }]
+  const page = await harness({
+    describe: describeAnswer({
+      value: { baseURL: 'https://opencode.ai/zen/go/v1', subscriptions },
+      user: { subscriptions },
+    }),
+    usage: {
+      ok: true,
+      subs: [
+        { id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_DEFAULT', isDefault: true, active: true, configured: true, source: 'env', usage: {} },
+        {
+          id: 'sub-2',
+          label: 'work@example.com',
+          apiKeyRef: 'OPENCODE_GO_WORK_EXAMPLE_COM',
+          // The row used to be stored under its id: clearing only the primary
+          // would leave this copy behind for the request path to resurrect.
+          fallbackRefs: ['OPENCODE_GO_SUB_2'],
+          isDefault: false,
+          active: false,
+          configured: true,
+          source: 'file',
+          usage: {},
+        },
+      ],
+    },
+  })
+  await page.reload()
+  page.control('subscriptions[1].toggle').props.onClick()
+  await page.reload()
+  const clear = page.control('subscriptions[1].clearCredential')
   assert.ok(clear !== undefined)
+  assert.match(page.text, /槽位 OPENCODE_GO_WORK_EXAMPLE_COM/u, 'the row names its OWN slot')
   await clear.props.onClick()
   await drainMicrotasks()
   await page.reload()
-  assert.deepEqual(page.calls.credentialUnset, ['OPENCODE_GO_API_KEY'])
-  assert.match(page.text, /已清除凭据 OPENCODE_GO_API_KEY/u)
+  assert.deepEqual(page.calls.credentialUnset, ['OPENCODE_GO_WORK_EXAMPLE_COM', 'OPENCODE_GO_SUB_2'])
+  assert.deepEqual(page.calls.mutate, [], 'removing a secret is not a settings edit')
   page.restore()
 })
 
@@ -921,9 +1023,7 @@ test('a host rejection is rendered beside the control it names', async () => {
   await page.reload()
   page.control('model.broken-extra.contextWindow').props.onChange({ target: { value: '4096' } })
   await page.reload()
-  await page.control('action.save').props.onClick()
-  await drainMicrotasks()
-  await page.reload()
+  await settleWrites(page)
   assert.equal(page.calls.mutate.length, 1)
   assert.match(page.text, /宿主拒绝了这次写入（已定位到 models\.extra\[broken-extra\]）/u)
   assert.match(page.text, /must be a positive integer/u)
@@ -934,11 +1034,9 @@ test('a revision conflict is reported as a conflict, not as a validation error',
   const page = await harness({
     failMutate: Object.assign(new Error('settings namespace "opencode-go-native" changed since it was read (expected revision 11, now 12)'), { code: 'settings/conflict' }),
   })
-  page.control('displayName').props.onChange({ target: { value: 'renamed' } })
-  await page.reload()
-  await page.control('action.save').props.onClick()
-  await page.reload()
-  assert.match(page.text, /另一个标签页先保存了/u)
+  await renameDefault(page, 'renamed')
+  await settleWrites(page)
+  assert.match(page.text, /另一个标签页先改过了/u)
   assert.match(page.text, /重新载入最新设置/u)
   page.restore()
 })
@@ -1172,5 +1270,357 @@ test('a model that has never been synced shows NO capability chips, and says why
   const dot = page.find((node) => node.props?.['data-ocg-dot'] === 'fresh')
   assert.equal(dot.length, 1)
   assert.match(dot[0].props.className, /ocg-dot--bad/u)
+  page.restore()
+})
+
+// ── subscriptions + balance (0.8.2) ────────────────────────────────────────
+
+test('the subscription list shows one progress bar per window, and one click switches who pays', async () => {
+  const now = Date.now()
+  const page = await harness({
+    describe: describeAnswer({
+      user: { subscriptions: [{ id: 'work', label: '公司号' }] },
+    }),
+    usage: {
+      ok: true,
+      subs: [
+        {
+          id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_DEFAULT', isDefault: true, active: true, configured: true,
+          usage: {
+            windows: {
+              rolling: { status: 'ok', percent: 12 },
+              weekly: { status: 'ok', percent: 83, resetsAt: new Date(now + 3 * 3600_000).toISOString() },
+            },
+            checkedAt: now,
+          },
+        },
+        {
+          id: 'work', label: '公司号', apiKeyRef: 'OPENCODE_GO_WORK', isDefault: false, active: false, configured: true,
+          usage: { windows: { weekly: { status: 'exhausted', percent: 100 } }, checkedAt: now },
+        },
+      ],
+    },
+  })
+  await page.reload()
+  assert.equal(page.control('subs.count').children[0], '2')
+  assert.match(page.text, /默认/u)
+  assert.match(page.text, /公司号/u)
+  assert.match(page.text, /5h/u, 'the rolling meter is labelled in the short form')
+  assert.match(page.text, /83%/u, 'the default row shows its weekly percent')
+  assert.match(page.text, /100%/u)
+  // The long window name and the reset time are phrased humanly, in the tooltip.
+  assert.ok(
+    page.find((node) => typeof node.props?.title === 'string' && /5 小时/.test(node.props.title)).length > 0,
+    'the meter tooltip spells the window out',
+  )
+  assert.ok(
+    page.find((node) => typeof node.props?.title === 'string' && /重置/u.test(node.props.title)).length > 0,
+    'a reset time is phrased, not an ISO blob',
+  )
+  // The ACTIVE row is the first one; the other one is renderable but plainly
+  // not the payer.
+  assert.equal(page.control('subscriptions[0].activate').props['data-ocg-sub-active'], '1')
+  assert.equal(page.control('subscriptions[1].activate').props['data-ocg-sub-active'], '0')
+  assert.match(page.text, /当前/u)
+  // ONE click switches: a settings write of its own, no 保存 needed.
+  page.control('subscriptions[1].activate').props.onClick()
+  await drainMicrotasks()
+  assert.equal(page.calls.mutate.length, 1)
+  assert.deepEqual(page.calls.mutate[0].ops, [{ op: 'set', path: ['activeSubscription'], value: 'work' }])
+  await page.reload()
+  assert.equal(page.control('subscriptions[1].activate').props['data-ocg-sub-active'], '1')
+  page.restore()
+})
+
+test('a subscription row is TWO lines: who pays on top, and the balance with its reset time underneath', async () => {
+  const now = Date.now()
+  const page = await harness({
+    usage: {
+      ok: true,
+      subs: [{
+        id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_API_KEY', isDefault: true, active: true,
+        configured: true, source: 'file',
+        usage: {
+          windows: {
+            // A window the gateway never gave a moment for: a bar, but NO reset line.
+            rolling: { status: 'ok', percent: 12 },
+            weekly: { status: 'ok', percent: 83, resetsAt: new Date(now + 3 * 3600_000).toISOString() },
+            monthly: { status: 'ok', percent: 53, resetsAt: new Date(now + 40 * 60_000).toISOString() },
+          },
+          checkedAt: now,
+        },
+      }],
+    },
+  })
+  const main = page.find((node) => typeof node.props?.className === 'string'
+    && node.props.className.includes('ocg-sub-main'))[0]
+  assert.notEqual(main, undefined, 'the row body exists')
+  // The row's five children in ORDER: radio, name, 设置, 删除, then the meters. The
+  // balance is a grid item of its OWN (`grid-area: 2 / 2 / 3 / -1` in the
+  // stylesheet) — that is what makes it a second line instead of a fourth
+  // column, and it is the point of the layout: the name stops competing with
+  // three meters for width.
+  const kids = main.children
+  assert.equal(kids.length, 5, 'radio, name, two row actions, and the balance line')
+  assert.ok(kids[0].props.className.includes('ocg-radio'), 'line 1 starts at the radio')
+  assert.ok(kids[1].props.className.includes('ocg-sub-name-wrap'), 'the name carries line 1')
+  assert.equal(kids[2].props['data-ocg-field'], 'subscriptions[0].toggle', 'the actions stay on the name line')
+  assert.equal(kids[3].props['data-ocg-field'], 'subscriptions[0].remove')
+  const group = kids[4]
+  assert.equal(group.props['data-ocg-balance'], 'default', 'the last child IS the balance line')
+  // Three cells, each a pill with (at most) a reset phrase under it.
+  const cells = group.children
+  assert.equal(cells.length, 3, 'one meter per window, always')
+  for (const cell of cells) {
+    assert.ok(cell.props.className.includes('ocg-meter-cell'), 'the cell wraps the pill')
+    // Children flatten like the DOM appends them, so "no reset line" is simply a
+    // cell with nothing under its pill.
+    assert.ok(cell.children.length <= 2, 'the cell is the pill, plus at most the reset line')
+    assert.ok(cell.children[0].props.className.includes('ocg-meter'))
+  }
+  const resetOf = (window) => cells
+    .map((cell) => cell.children[1])
+    .find((node) => node?.props?.['data-ocg-reset'] === window)
+  // The phrase is ON THE PAGE now, not only in a tooltip — but only where the
+  // gateway actually reported a moment.
+  assert.equal(resetOf('rolling'), undefined, 'a window with no resetsAt gets no invented reset line')
+  assert.equal(texts(resetOf('weekly')).join(''), '3 小时后')
+  assert.equal(texts(resetOf('monthly')).join(''), '40 分钟后')
+  assert.match(page.text, /3 小时后/u)
+  assert.match(page.text, /40 分钟后/u)
+  // The pill still answers "which window" in the short form, and the tooltip
+  // keeps the full sentence plus the local clock moment.
+  assert.equal(texts(cells[0].children[0]).join('|'), '5h|12%', 'the compact window name stays')
+  const weeklyCell = cells.find((cell) => cell.props['data-ocg-window'] === 'weekly')
+  assert.match(weeklyCell.props.title, /周，83%，约 3 小时后重置（\d\d-\d\d \d\d:\d\d）/u)
+  // And the layout that makes the two lines true is in the served stylesheet.
+  const { source } = await loadRegistration()
+  assert.ok(source.includes('grid-area: 2 / 2 / 3 / -1'), 'the balance line is placed on grid row 2')
+  assert.ok(/\.ocg-sub-main \{[^}]*row-gap: 6px/u.test(source), 'the row is a two-row grid')
+  assert.ok(/\.ocg-meter-reset \{[^}]*text-overflow: ellipsis/u.test(source), 'a long reset phrase truncates instead of wrapping')
+  page.restore()
+})
+
+test('opening the panel refreshes the balance by itself: cache first, then only what is stale', async () => {
+  const page = await harness({
+    describe: describeAnswer({ user: { subscriptions: [{ id: 'work', label: '公司号' }] } }),
+    usage: {
+      ok: true,
+      subs: [{
+        id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_API_KEY', isDefault: true, active: true,
+        configured: true, source: 'file', usage: {},
+      }],
+    },
+  })
+  /** Every usage read the page made, in order. */
+  const usageReads = () => page.calls.urls
+    .map((call) => String(call.url))
+    .filter((url) => url.includes('/opencode-go-native/usage'))
+  // The panel paints the CACHE first (no query) and then asks the host to bring
+  // the stale rows up to date — the numbers on screen are never only whatever
+  // happened to be on disk when the tab opened.
+  assert.equal(usageReads().length, 2, 'one cached read, then one stale-only read')
+  assert.ok(!usageReads()[0].includes('refresh'), 'the cache paints first, with no refresh')
+  assert.match(usageReads()[1], /\?refresh=auto$/u, 'the second ask is the stale-only mode')
+  // …and it asks for that mode ONCE per mount: re-rendering the panel is not a
+  // reason to talk to the gateway again.
+  await page.reload()
+  await drainMicrotasks()
+  assert.equal(usageReads().length, 2, 'a re-render does not re-probe')
+  // The BUTTON is a different act: it means "do not trust the cache", so it
+  // forces every row (the host's TTL does not apply to it).
+  page.control('action.refreshUsage').props.onClick()
+  await drainMicrotasks()
+  assert.equal(usageReads().length, 3)
+  assert.match(usageReads()[2], /\?refresh=1$/u)
+  // What the operator typed in a row is enough to refresh that row's balance:
+  // storing a key asks the same stale-only question (a fresh reading is skipped
+  // by the HOST, not by the page).
+  page.control('subscriptions[0].toggle').props.onClick()
+  await page.reload()
+  page.control('subscriptions[0].apiKey').props.onChange({ target: { value: 'sk-NEW-not-a-real-key' } })
+  page.control('subscriptions[0].apiKey').props.onBlur()
+  await drainMicrotasks()
+  assert.match(usageReads().at(-1), /\?refresh=auto$/u, 'a pasted key gets its balance measured')
+  // Switching who pays reads the balance of the row that now pays — again
+  // stale-only, so a switch cannot become a probe storm.
+  page.control('subscriptions[1].activate').props.onClick()
+  await drainMicrotasks()
+  assert.match(usageReads().at(-1), /\?refresh=auto$/u)
+  page.restore()
+})
+
+test('a new subscription needs a name, keeps a stable id, and stores its key in its own slot', async () => {
+  const page = await harness()
+  page.control('action.addSub').props.onClick()
+  await page.reload()
+  assert.notEqual(page.control('subscriptions[1].toggle'), undefined, 'the adder appended a row')
+  page.control('subscriptions[1].toggle').props.onClick()
+  await page.reload()
+  assert.ok(page.control('subscriptions[1].label') !== undefined, 'the row has a NAME field, not an id field')
+  assert.equal(page.control('subscriptions[1].id'), undefined, 'the id is never typed')
+  page.control('subscriptions[1].apiKey').props.onChange({ target: { value: 'sk-NEW-not-a-real-key' } })
+  await page.reload()
+  // A key with no name has no derived slot: it stays staged, and the validator
+  // says why instead of writing a secret nowhere.
+  assert.match(page.text, /必填：这条订阅的名字/u)
+  page.control('subscriptions[1].apiKey').props.onBlur()
+  await drainMicrotasks()
+  assert.equal(page.calls.credentialSet.length, 0, 'no slot, no write')
+  assert.equal(page.calls.mutate.length, 0, 'a blank adder row is not a write either')
+  // With a name, the stored entry keeps the id the row was born with, while the
+  // credential slot follows the NAME.
+  page.control('subscriptions[1].label').props.onChange({ target: { value: 'Work号' } })
+  await page.reload()
+  await settleWrites(page)
+  assert.deepEqual(
+    page.calls.mutate[0].ops.find((op) => op.path.join('.') === 'subscriptions').value,
+    [{ id: 'sub-2', label: 'Work号' }],
+  )
+  // The key returns to the field's own act: leaving it now resolves the slot.
+  page.control('subscriptions[1].apiKey').props.onBlur()
+  await drainMicrotasks()
+  assert.deepEqual(page.calls.credentialSet, [{ ref: 'OPENCODE_GO_WORK', value: 'sk-NEW-not-a-real-key' }])
+  await page.reload()
+  // No pending write is left behind — the form converged.
+  assert.equal(page.control('write.state'), undefined, 'a settled form shows no write indicator')
+  // Switching to the freshly stored row is likewise an immediate act.
+  page.control('subscriptions[1].activate').props.onClick()
+  await drainMicrotasks()
+  await page.reload()
+  assert.equal(page.control('subscriptions[1].activate').props['data-ocg-sub-active'], '1')
+  page.restore()
+})
+
+test('the card head names the subscription that PAYS, so a switch is visible', async () => {
+  const subscriptions = [{ id: 'work', label: '公司号' }]
+  const page = await harness({
+    describe: describeAnswer({
+      value: { baseURL: 'https://opencode.ai/zen/go/v1', displayName: '默认号', activeSubscription: 'work', subscriptions },
+      user: { displayName: '默认号', subscriptions },
+    }),
+    usage: {
+      ok: true,
+      subs: [
+        { id: 'default', label: '默认号', isDefault: true, active: false, configured: true, usage: {} },
+        { id: 'work', label: '公司号', isDefault: false, active: true, configured: true, usage: {} },
+      ],
+    },
+  })
+  await page.reload()
+  // `work` pays, so the head says so — it used to show `displayName`, which is
+  // only the DEFAULT row's name.
+  assert.equal(page.control('active.name').children[0], '公司号')
+  page.control('subscriptions[0].activate').props.onClick()
+  await drainMicrotasks()
+  await page.reload()
+  assert.equal(page.control('active.name').children[0], '默认号', 'the head follows the switch')
+  page.restore()
+})
+
+test('clicking the DEFAULT row switches the payer back, in one write', async () => {
+  // The row the user actually clicked in the bug report: the synthesized default
+  // row, which has no stored entry. The click must reach the host — a page that
+  // shows 「当前」 on a row the host never heard about is the worst of both
+  // worlds (it lies AND it keeps the form permanently dirty).
+  const page = await harness({
+    describe: describeAnswer({
+      value: { baseURL: 'https://opencode.ai/zen/go/v1', activeSubscription: 'work', subscriptions: [{ id: 'work', label: '公司号' }] },
+      user: { subscriptions: [{ id: 'work', label: '公司号' }] },
+    }),
+    usage: {
+      ok: true,
+      live: { liveRef: 'OPENCODE_GO_API_KEY', activeId: 'work' },
+      subs: [
+        { id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_DEFAULT', isDefault: true, active: false, usage: {} },
+        { id: 'work', label: '公司号', apiKeyRef: 'OPENCODE_GO_WORK', isDefault: false, active: true, usage: {} },
+      ],
+    },
+  })
+  await page.reload()
+  assert.equal(page.control('subscriptions[1].activate').props['data-ocg-sub-active'], '1')
+  page.control('subscriptions[0].activate').props.onClick()
+  await drainMicrotasks()
+  await page.reload()
+  assert.equal(page.calls.mutate.length, 1, 'the click writes on its own')
+  assert.deepEqual(page.calls.mutate[0].ops, [{ op: 'set', path: ['activeSubscription'], value: 'default' }])
+  assert.equal(page.control('subscriptions[0].activate').props['data-ocg-sub-active'], '1')
+  assert.equal(page.control('subscriptions[1].activate').props['data-ocg-sub-active'], '0')
+  // And the form settled: no lingering write indicator, no hint paragraph.
+  assert.equal(page.control('write.state'), undefined)
+  assert.equal(page.control('action.reload'), undefined, 'the head carries no manual reload any more')
+  assert.equal(page.control('subs.live'), undefined, 'the 生效变量 hint line is gone')
+  assert.ok(!/生效变量/.test(page.text), 'no live-slot hint on the page')
+  assert.ok(!/改动立即生效/.test(page.text), 'no auto-save hint on the page')
+  page.restore()
+})
+
+test('the trash sits on every row, and the row that PAYS cannot be deleted', async () => {
+  // One subscription: it is the active one, so there is nothing to remove.
+  const alone = await harness()
+  assert.equal(alone.control('subscriptions[0].remove').props.disabled, true, 'the only row pays, so it cannot go')
+  assert.match(alone.control('subscriptions[0].remove').props.title, /当前订阅不能删除/u)
+  assert.equal(alone.control('subscriptions[0].remove').props['data-ocg-remove-locked'], '1')
+  alone.restore()
+
+  // Two subscriptions: both rows carry the button, and only the ACTIVE one is
+  // locked — the rule is about who pays, not about which row came first.
+  const page = await harness({
+    describe: describeAnswer({
+      value: { baseURL: 'https://opencode.ai/zen/go/v1', subscriptions: [{ id: 'work', label: '公司号' }] },
+      user: { subscriptions: [{ id: 'work', label: '公司号' }] },
+    }),
+    usage: {
+      ok: true,
+      subs: [
+        { id: 'default', label: '默认', apiKeyRef: 'OPENCODE_GO_DEFAULT', isDefault: true, active: true, usage: {} },
+        { id: 'work', label: '公司号', apiKeyRef: 'OPENCODE_GO_WORK', isDefault: false, active: false, usage: {} },
+      ],
+    },
+  })
+  await page.reload()
+  assert.equal(page.control('subscriptions[0].remove').props.disabled, true, 'the payer is locked')
+  assert.equal(page.control('subscriptions[1].remove').props.disabled, false, 'the other row is removable')
+  // Removing is an act of its own too (no 保存 to press): it writes the list
+  // without that row.
+  page.control('subscriptions[1].remove').props.onClick()
+  await settleWrites(page, 30)
+  assert.equal(page.calls.mutate.length, 1, 'removing writes on its own')
+  assert.deepEqual(page.calls.mutate[0].ops, [{ op: 'set', path: ['subscriptions'], value: [] }])
+  page.restore()
+})
+
+test('the default row can be deleted once it stops paying, and restored from the header', async () => {
+  const subscriptions = [{ id: 'work', label: '公司号' }]
+  const page = await harness({
+    describe: describeAnswer({
+      value: {
+        baseURL: 'https://opencode.ai/zen/go/v1',
+        apiKeyEnv: 'OPENCODE_GO_API_KEY',
+        activeSubscription: 'work',
+        subscriptions,
+      },
+      user: { subscriptions },
+    }),
+  })
+  await page.reload()
+  // It is on the list, but not the payer: removable.
+  assert.equal(page.control('subscriptions[0].remove').props.disabled, false)
+  page.control('subscriptions[0].remove').props.onClick()
+  await settleWrites(page, 30)
+  assert.deepEqual(page.calls.mutate[0].ops, [{
+    op: 'set',
+    path: ['subscriptions'],
+    value: [{ id: 'default', hidden: true }, { id: 'work', label: '公司号' }],
+  }])
+  assert.equal(page.control('subscriptions[0].remove'), undefined, 'a hidden row is not rendered at all')
+  assert.notEqual(page.control('subscriptions[1].remove'), undefined, 'the other row keeps its index and its trash')
+  // Reversible from the header — hiding the synthesized default is not a
+  // one-way door.
+  assert.notEqual(page.control('action.restoreDefaultSub'), undefined)
+  page.control('action.restoreDefaultSub').props.onClick()
+  await settleWrites(page, 30)
+  assert.deepEqual(page.calls.mutate[1].ops, [{ op: 'set', path: ['subscriptions'], value: [{ id: 'work', label: '公司号' }] }])
+  assert.notEqual(page.control('subscriptions[0].remove'), undefined, 'the default row is back on the list')
   page.restore()
 })

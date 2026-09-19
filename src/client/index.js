@@ -97,6 +97,9 @@ const MODELS_URL = '/opencode-go-native/models'
 /** The capability sync. One model per request, so the page owns the progress. */
 const SYNC_URL = '/opencode-go-native/sync'
 
+/** The subscriptions + balance face (0.8): one row per key, `/usage` facts included. */
+const USAGE_URL = '/opencode-go-native/usage'
+
 /**
  * One JSON round-trip against this plugin's own route.
  *
@@ -161,22 +164,17 @@ export function apply(ctx) {
       .mutate(ns, ops, expectedRevision)
       .then(unwrapRemote),
     /**
-     * The credential state for one reference — presence and source, never the
-     * value. A refusal here is not fatal to the page (the settings half still
-     * renders), so the error arm collapses to `undefined` exactly as the
-     * official Models page does.
-     */
-    describeCredential: (reference) => remoteCredentials.describe([reference])
-      .then((result) => (result?.ok === true ? result.value?.[reference] : undefined))
-      .catch(() => undefined),
-    /**
      * Store one API key in the credential provider.
      *
      * The write is deliberately NOT part of `mutateSettings`: the settings
-     * document records the reference NAME, and the secret goes to the store the
-     * harness owns (`$DSH_HOME/.credentials.yaml`, or the launch environment
-     * when one shadows it). `undefined` means stored; a refusal is returned as
-     * text because it is shown beside the field.
+     * document records only the derived slot NAME, and the secret goes to the
+     * store the harness owns (`$DSH_HOME/.credentials.yaml`, or the launch
+     * environment when one shadows it). `undefined` means stored; a refusal is
+     * returned as text because it is shown beside the field.
+     *
+     * There is no `describe` here on purpose: credential PRESENCE for the rows
+     * rides `GET /opencode-go-native/usage` (the host describes every slot in
+     * one answer, so the page never issues one remote call per row).
      */
     storeCredential: (reference, value) => remoteCredentials.set(reference, value)
       .then((result) => (result?.ok === true ? undefined : describeFailure(result?.error))),
@@ -199,6 +197,25 @@ export function apply(ctx) {
     }),
     /** The stored synced layer (provenance for what the page is showing). */
     synced: () => requestJson(SYNC_URL),
+    /**
+     * The subscription/balance rows.
+     *
+     * Three modes, because "show me the balance" and "ask the gateway" are
+     * different acts:
+     *
+     *   - no argument: the last-known cache, no request to the gateway;
+     *   - `'auto'`: probe the rows whose last GOOD reading is older than the
+     *     operator's `usagePollTtlMs` — what OPENING the panel asks for (a stale
+     *     number is worth a request; re-opening a panel is not);
+     *   - `true`: probe EVERY key back-to-back (the 刷新余额 button — an explicit
+     *     act, so it means "do not trust the cache").
+     *
+     * In every mode the freshness rule lives in the HOST: the page must not keep
+     * a second copy of a TTL the operator can configure.
+     */
+    usage: (refresh) => requestJson(refresh === true
+      ? `${USAGE_URL}?refresh=1`
+      : refresh === 'auto' ? `${USAGE_URL}?refresh=auto` : USAGE_URL),
   }
 
   // `inject` (not `register`): the settings shell owns this slot, so the

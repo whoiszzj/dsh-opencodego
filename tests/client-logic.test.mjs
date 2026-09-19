@@ -14,19 +14,24 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
+  activateSubscription,
+  activationWriteOps,
   addModelById,
+  addSubscriptionRow,
+  balanceCells,
   blankExtraDraft,
   capabilityChips,
   catalogueView,
   capacityPlaceholder,
-  credentialPlan,
   deepEqual,
+  defaultRowHidden,
   describeFailure,
   describeSync,
   diagnosticsView,
   directoryRows,
   effectiveIds,
   errorPathsOf,
+  mintSubscriptionId,
   modelSourceLine,
   replacementSuggestions,
   syncProgressText,
@@ -45,16 +50,29 @@ import {
   modelsWriteOps,
   namespaceView,
   patchDirectoryRow,
+  patchSubRow,
   preserveDraftScalars,
+  removeSubRow,
+  resetPhrase,
+  resetShort,
+  resetStamp,
   primaryErrorPath,
   removeDirectoryRow,
+  restoreDefaultRow,
   revisionFor,
   rowIndexFor,
   setModelSelection,
+  stagedCredentialPlanFor,
+  stagedCredentialPlans,
+  subscriptionSlotOf,
+  subscriptionSlots,
+  subsBlockFrom,
+  usageView,
   unwrapPayload,
   validateForm,
   writeOps,
 } from '../src/client/logic.js'
+import { DEFAULT_SUB_ID, normalizeSubscriptions, refForSubscriptionLabel } from '../src/subs.js'
 
 /** The sentinel the credential fixture stages — never a real key. */
 const STAGED = 'sk-SENTINEL-not-a-real-key'
@@ -123,15 +141,20 @@ test('formFromView survives a value layer that carries no models block at all', 
   assert.equal(form.replaceDiscovered, true)
 })
 
-test('the API-key field always starts blank: a secret is never rendered back', () => {
-  // Even when the payload carries the legacy value (a host that does not redact)
-  // or the redaction sidecar says one is stored.
+test('there is no top-level key cell any more; every row\'s staging field starts blank', () => {
+  // The redesign moved the write-only key cell onto the subscription rows: a
+  // secret is never rendered back, and the top of the page is the list itself —
+  // not a second, parallel "the key" field.
   for (const view of [
     viewOf({ user: { apiKey: LEGACY } }),
     { ...viewOf({ user: {} }), secrets: [{ path: ['apiKey'], set: true }] },
   ]) {
     const form = formFromView(view)
-    assert.equal(form.apiKey, '', 'the staging field must never be pre-filled from the host')
+    assert.equal('apiKey' in form, false, 'the legacy top-level staging cell is gone')
+    assert.ok(form.subscriptions.length > 0, 'the default row always exists')
+    for (const row of form.subscriptions) {
+      assert.equal(row.apiKey, '', 'the row staging field must never be pre-filled from the host')
+    }
   }
 })
 
@@ -351,12 +374,28 @@ test('addModelById enables an advertised id by clearing its exclusion, and decla
 
 // ── the credential plan ────────────────────────────────────────────────────
 
-test('credentialPlan is undefined while the field is blank, and carries the staged value otherwise', () => {
-  const form = formFromView(viewOf({ user: {} }))
-  assert.equal(credentialPlan(form), undefined)
-  assert.deepEqual(credentialPlan({ ...form, apiKey: `  ${STAGED}  ` }), { reference: 'OPENCODE_GO_API_KEY', value: STAGED })
-  // No reference to store under: the plan declines rather than guessing.
-  assert.equal(credentialPlan({ ...form, apiKey: STAGED, apiKeyEnv: '' }), undefined)
+test('stagedCredentialPlans plans EVERY row that staged a key, to that row\'s derived slot', () => {
+  const form = formFromView(viewOf({ user: { subscriptions: [{ id: 'work', label: '公司号' }] } }))
+  assert.deepEqual(stagedCredentialPlans(form), [], 'nothing staged, nothing to write')
+
+  // The DEFAULT row is no exception: it owns a derived slot like every other
+  // row (`OPENCODE_GO_DEFAULT`), and its plan is reported under that reference.
+  const stagedDefault = patchSubRow(form, 'default', { apiKey: `  ${STAGED}  ` })
+  assert.deepEqual(stagedCredentialPlans(stagedDefault), [
+    { reference: 'OPENCODE_GO_DEFAULT', value: STAGED, label: 'OPENCODE_GO_DEFAULT', key: 'default' },
+  ])
+
+  const both = patchSubRow(stagedDefault, 'work', { apiKey: 'sk-work-0123456789' })
+  assert.deepEqual(stagedCredentialPlans(both), [
+    { reference: 'OPENCODE_GO_DEFAULT', value: STAGED, label: 'OPENCODE_GO_DEFAULT', key: 'default' },
+    { reference: 'OPENCODE_GO_WORK', value: 'sk-work-0123456789', label: '公司号', key: 'work' },
+  ])
+
+  // A row with no name yet has no derived slot, so a key typed into it stays a
+  // draft (it cannot be written to a slot that does not exist yet).
+  const blankForm = addSubscriptionRow(formFromView(viewOf({ user: {} })))
+  const orphan = patchSubRow(blankForm, blankForm.subscriptions[1].key, { apiKey: STAGED })
+  assert.deepEqual(stagedCredentialPlans(orphan), [])
 })
 
 // ── validation ─────────────────────────────────────────────────────────────
@@ -389,7 +428,6 @@ test('validateForm names the control for every client-detectable mistake', () =>
   const errors = validateForm({
     baseURL: 'ftp://nope',
     apiKeyEnv: 'sk-abcdefghijklmnopqrstuvwxyz0123456789',
-    apiKey: 'sk-with\nnewline',
     sessionHeader: 'x session',
     sessionHeaderEnabled: true,
     sessionHeaderMode: 'session-id',
@@ -404,13 +442,19 @@ test('validateForm names the control for every client-detectable mistake', () =>
       { id: 'dup', api: '', contextWindow: 4096, maxTokens: '', input: [], reasoningEfforts: [] },
     ],
     replaceDiscovered: false,
+    // The staged key lives on a subscription ROW now (here the default one).
+    subscriptions: [{
+      key: 'default', isDefault: true, id: 'default', label: '', apiKeyRef: 'OPENCODE_GO_API_KEY',
+      apiKey: 'sk-with\nnewline',
+    }],
+    activeSubscription: 'default',
   })
   assert.equal(errors.baseURL, '必须以 http:// 或 https:// 开头')
   // The reference field is a NAME; a pasted key there would leave the runtime
   // reading an unset variable while the secret sits in the settings document.
   assert.match(errors.apiKeyEnv, /引用名只能填环境变量名/u)
   // The staged credential value must be a value a header could carry.
-  assert.match(errors.apiKey, /控制字符|换行/u)
+  assert.match(errors['subscriptions[0].apiKey'], /控制字符|换行/u)
   assert.match(errors.sessionHeader, /RFC 7230/u)
   assert.match(errors['models.extra[0].id'], /必填/u)
   assert.match(errors['models.extra[0].api'], /不受支持的协议/u)
@@ -426,7 +470,7 @@ test('validateForm names the control for every client-detectable mistake', () =>
 
 test('validateForm requires the credential reference, the one supported source', () => {
   const base = {
-    baseURL: 'https://x/v1', apiKeyEnv: 'OPENCODE_GO_API_KEY', apiKey: '', sessionHeader: 'x-s',
+    baseURL: 'https://x/v1', apiKeyEnv: 'OPENCODE_GO_API_KEY', sessionHeader: 'x-s',
     sessionHeaderEnabled: true, sessionHeaderMode: 'session-id', disabled: [], extra: [], overrides: [], replaceDiscovered: false,
   }
   assert.deepEqual(validateForm(base), {})
@@ -437,7 +481,6 @@ test('validateForm accepts a clean draft, including a disabled header with no na
   const errors = validateForm({
     baseURL: 'https://opencode.ai/zen/go/v1',
     apiKeyEnv: 'OPENCODE_GO_API_KEY',
-    apiKey: '',
     sessionHeader: '',
     sessionHeaderEnabled: false,
     sessionHeaderMode: 'uuid',
@@ -487,12 +530,19 @@ test('writeOps writes only the fields that moved, and unsets a cleared optional'
   ])
 })
 
-test('writeOps never carries the staged credential: that write belongs to the credential store', () => {
+test('writeOps never carries a staged credential value: that write belongs to the credential store', () => {
   const clean = formFromView(viewOf({ user: {} }))
-  const draft = { ...clean, apiKey: STAGED }
-  assert.deepEqual(writeOps(clean, draft), [])
-  // And a save that only stages a key still owes the credential plan.
-  assert.deepEqual(credentialPlan(draft), { reference: 'OPENCODE_GO_API_KEY', value: STAGED })
+  const draft = patchSubRow(clean, 'default', { apiKey: STAGED })
+  assert.deepEqual(writeOps(clean, draft), [], 'the settings document records slots, never secrets')
+  // And a commit that only stages a key still owes the credential plan; the
+  // per-row lookup is what the one-click switch uses before moving the pointer.
+  assert.deepEqual(stagedCredentialPlans(draft), [
+    { reference: 'OPENCODE_GO_DEFAULT', value: STAGED, label: 'OPENCODE_GO_DEFAULT', key: 'default' },
+  ])
+  assert.deepEqual(stagedCredentialPlanFor(draft, 'default'), {
+    reference: 'OPENCODE_GO_DEFAULT', value: STAGED, label: 'OPENCODE_GO_DEFAULT', key: 'default',
+  })
+  assert.equal(stagedCredentialPlanFor(draft, 'work'), undefined)
 })
 
 test('writeOps writes the four models sub-shapes together when the block moved', () => {
@@ -675,11 +725,18 @@ test('modelsWriteOps writes ONLY the models paths (a pick never smuggles scalars
 
 test('preserveDraftScalars keeps the unsaved typing across a models commit', () => {
   const saved = formFromView(viewOf({ user: { baseURL: 'https://a/v1', models: { disabled: ['b'], extra: [], overrides: {}, replaceDiscovered: false } } }))
-  const typed = { ...saved, baseURL: 'https://typing/v1', apiKey: STAGED, sessionHeader: 'x-new' }
+  // The staged key is a ROW field now: it rides the `subscriptions` slice, so
+  // dropping the old top-level `apiKey` must not lose it.
+  const typed = {
+    ...saved,
+    baseURL: 'https://typing/v1',
+    sessionHeader: 'x-new',
+    subscriptions: patchSubRow(saved, 'default', { apiKey: STAGED }).subscriptions,
+  }
   const merged = preserveDraftScalars(saved, typed)
   assert.equal(merged.baseURL, 'https://typing/v1')
-  assert.equal(merged.apiKey, STAGED)
   assert.equal(merged.sessionHeader, 'x-new')
+  assert.equal(merged.subscriptions[0].apiKey, STAGED)
   // The models block comes from the server, not the pre-commit draft.
   assert.deepEqual(merged.disabled, ['b'])
 })
@@ -807,4 +864,382 @@ test('with the shipped default, nothing is enabled until the picker says so', ()
   const withHandAdded = { ...picked, extra: [...picked.extra, { id: 'hand-added', name: 'Hand' }] }
   const after = setModelSelection(withHandAdded, [{ id: 'alpha' }, { id: 'beta' }], [])
   assert.deepEqual(effectiveIds(after, ['alpha', 'beta']), ['hand-added'])
+})
+
+/* ── subscriptions + balance (0.8.2) ───────────────────────────────────── */
+
+const baseView = (user = {}) => ({
+  ns: 'opencode-go-native',
+  value: {
+    baseURL: 'https://opencode.ai/zen/go/v1',
+    apiKeyEnv: 'OPENCODE_GO_API_KEY',
+    models: {},
+  },
+  user,
+  revision: 3,
+  secrets: [],
+})
+
+test('an untouched pre-0.8 document round-trips to NO subscriptions write at all', () => {
+  const form = formFromView(baseView())
+  assert.equal(form.subscriptions.length, 1, 'the default row always exists')
+  assert.equal(form.subscriptions[0].isDefault, true)
+  // The default row owns a derived slot like every other row; the LIVE slot
+  // (`apiKeyEnv`) is what the host writes the active key into, not a row's slot.
+  assert.equal(subscriptionSlotOf(form.subscriptions[0]), 'OPENCODE_GO_DEFAULT')
+  assert.equal(form.activeSubscription, 'default', 'exactly one row pays, and it starts as default')
+  assert.deepEqual(subsBlockFrom(form), [], 'the default row is never stored in the array')
+  assert.deepEqual(writeOps(form, form), [])
+})
+
+test('a stored extra entry loads into an editable row and writes back equal', () => {
+  // The stored shape is a NAME and (optionally) an id: nothing else.
+  const user = { subscriptions: [{ id: 'work', label: '公司号' }] }
+  const form = formFromView(baseView(user))
+  assert.deepEqual(form.subscriptions.map((row) => row.key), ['default', 'work'])
+  const work = form.subscriptions[1]
+  assert.equal(work.label, '公司号')
+  assert.equal(work.apiKey, '', 'the row stages a NEW key, never a stored one')
+  assert.deepEqual(subsBlockFrom(form), [{ id: 'work', label: '公司号' }])
+  // Re-serializing is byte-stable: a save with no edit emits no ops.
+  assert.deepEqual(writeOps(form, form), [])
+})
+
+test('the default row is NEVER written into the subscriptions array', () => {
+  const form = formFromView(baseView())
+  assert.deepEqual(subsBlockFrom(form), [])
+  // Renaming the default row is a TOP-LEVEL write (`displayName`), never a
+  // `{ id: 'default' }` entry. Its credential slot is DERIVED and cannot be
+  // renamed at all any more: it is not a field of the row.
+  const renamed = patchSubRow(form, 'default', { label: '主号' })
+  assert.deepEqual(subsBlockFrom(renamed), [], 'still nothing stored in the array')
+  assert.equal(subscriptionSlots(form).get('default'), 'OPENCODE_GO_DEFAULT')
+
+  const draft = { ...form, displayName: '主号', apiKeyEnv: 'MY_SLOT' }
+  assert.deepEqual(writeOps(form, draft), [
+    { op: 'set', path: ['apiKeyEnv'], value: 'MY_SLOT' },
+    { op: 'set', path: ['displayName'], value: '主号' },
+  ])
+})
+test('mintSubscriptionId hands out the first unused sub-N id', () => {
+  assert.equal(mintSubscriptionId(), 'sub-2')
+  assert.equal(mintSubscriptionId(new Set(['default'])), 'sub-2')
+  assert.equal(mintSubscriptionId(new Set(['default', 'sub-2'])), 'sub-3')
+  assert.equal(mintSubscriptionId(new Set(['sub-2', 'sub-3', 'sub-5'])), 'sub-4')
+  // Ids are opaque on purpose: they are addresses, not names, so a rename can
+  // never move one (and with it the credential slot).
+  assert.match(mintSubscriptionId(), /^[A-Za-z0-9_-]{1,40}$/u)
+})
+
+test('subscriptionSlotOf names the slot after the row, and never uses the LIVE slot', () => {
+  // A NAME that slugs to nothing (Chinese, punctuation) falls back to the
+  // id-derived spelling, which is also what the host resolves for it.
+  assert.equal(subscriptionSlotOf({ isDefault: true }, '默认'), 'OPENCODE_GO_DEFAULT')
+  assert.equal(subscriptionSlotOf({ id: 'default' }), 'OPENCODE_GO_DEFAULT')
+  assert.equal(subscriptionSlotOf({ id: 'work' }), 'OPENCODE_GO_WORK')
+  assert.equal(subscriptionSlotOf({ id: 'a-b.c' }), 'OPENCODE_GO_A_B_C')
+  assert.equal(subscriptionSlotOf({ id: 'sub-2', label: 'me@example.com' }), 'OPENCODE_GO_ME_EXAMPLE_COM')
+})
+
+test('add/append, remove, and blank-row dropping behave like the extra rows', () => {
+  let form = formFromView(baseView())
+  form = addSubscriptionRow(form)
+  assert.equal(form.subscriptions.length, 2)
+  // The id EXISTS from birth: it is not minted on save, because a key that moves
+  // under the draft breaks the expanded panel, the staged secret's address, and
+  // the dirty comparison all at once.
+  assert.equal(form.subscriptions[1].id, 'sub-2')
+  assert.equal(form.subscriptions[1].key, 'sub-2', 'the row key IS its id, so it never moves')
+  assert.deepEqual(subsBlockFrom(form), [], 'a blank adder row is not a write')
+
+  form = patchSubRow(form, form.subscriptions[1].key, { label: 'Home' })
+  assert.deepEqual(subsBlockFrom(form), [{ id: 'sub-2', label: 'Home' }])
+  assert.deepEqual([...subscriptionSlots(form).values()], ['OPENCODE_GO_DEFAULT', 'OPENCODE_GO_HOME'])
+  // A rename keeps the id where it was (that is the row's stable address) while
+  // the credential SLOT follows the name — the runtime keeps the id-derived
+  // spelling as the fallback and moves the stored key across.
+  form = patchSubRow(form, 'sub-2', { label: '家' })
+  assert.deepEqual(subsBlockFrom(form), [{ id: 'sub-2', label: '家' }])
+  assert.equal(subscriptionSlots(form).get('sub-2'), 'OPENCODE_GO_SUB_2', 'no slug in that name')
+
+  // Removal addresses a row by its stable KEY.
+  form = removeSubRow(form, 'sub-2')
+  assert.deepEqual(subsBlockFrom(form), [])
+  // The default row has no entry to delete (the host synthesizes it), so
+  // "deleting" it HIDES it — and the marker is what reaches the document.
+  const hidden = removeSubRow(form, 'default')
+  assert.equal(hidden.subscriptions[0].isDefault, true)
+  assert.equal(defaultRowHidden(hidden), true)
+  assert.deepEqual(subsBlockFrom(hidden), [{ id: 'default', hidden: true }])
+  // The way back is one call, so the click is not a one-way door.
+  assert.equal(defaultRowHidden(restoreDefaultRow(hidden)), false)
+  assert.deepEqual(subsBlockFrom(restoreDefaultRow(hidden)), [])
+})
+
+test('a document row whose id was lost gets a deterministic stand-in, never a duplicate', () => {
+  // The host refuses an entry with no id, so this is a broken document — the
+  // page must not turn it into two rows claiming one id.
+  const form = formFromView(baseView({ subscriptions: [{ label: 'lost' }, { label: 'kept', id: 'sub-2' }] }))
+  const block = subsBlockFrom(form)
+  assert.equal(new Set(block.map((entry) => entry.id)).size, block.length, 'ids stay unique')
+  assert.deepEqual(block.map((entry) => entry.label), ['lost', 'kept'])
+})
+
+test('hiding a row takes it off the list and leaves an unrelated pointer alone', () => {
+  const form = formFromView(baseView({ subscriptions: [{ id: 'work', label: '公司号' }] }))
+  const hidden = removeSubRow(activateSubscription(form, 'work'), 'default')
+  assert.equal(defaultRowHidden(hidden), true)
+  assert.equal(hidden.activeSubscription, 'work', 'the pointer named a visible row, so it stands')
+  assert.deepEqual(subsBlockFrom(hidden), [
+    { id: 'default', hidden: true },
+    { id: 'work', label: '公司号' },
+  ])
+  // A pointer naming a HIDDEN row is refused: the host would resolve it back to
+  // the first visible row, which is not what the click meant.
+  assert.match(validateForm({ ...hidden, activeSubscription: 'default' }).activeSubscription, /不在列表里/u)
+  // Restoring puts it back with no other effect.
+  assert.deepEqual(subsBlockFrom(restoreDefaultRow(hidden)), [{ id: 'work', label: '公司号' }])
+})
+
+test('deleting the row that PAYS repoints the pointer, and the last row cannot be hidden', () => {
+  const form = formFromView(baseView({ subscriptions: [{ id: 'work', label: '公司号' }] }))
+  // The page disables the trash on the active row, so this is the defensive
+  // path: a hand-built draft must still not leave the route billing a row that
+  // is gone.
+  const repointed = removeSubRow(form, 'default')
+  assert.equal(repointed.activeSubscription, 'work', 'the next visible row takes over')
+  // Hiding the LAST visible row is refused before anything is written.
+  const noneLeft = removeSubRow({ ...form, subscriptions: [form.subscriptions[0]] }, 'default')
+  assert.match(validateForm(noneLeft).subscriptions, /至少要保留一条订阅/u)
+})
+
+test('only one subscription is active, and activating commits the pointer (and the list when it moved)', () => {
+  const clean = formFromView(baseView({ subscriptions: [{ id: 'work', label: '公司号' }] }))
+  assert.equal(clean.activeSubscription, 'default')
+
+  const switched = activateSubscription(clean, 'work')
+  assert.equal(switched.activeSubscription, 'work', 'a click moves the single pointer; there is no second boolean')
+  assert.deepEqual(writeOps(clean, switched), [
+    { op: 'set', path: ['activeSubscription'], value: 'work' },
+  ])
+  // The stored list already holds the row, so the click writes only the pointer.
+  assert.deepEqual(activationWriteOps(clean, switched, 'work'), [
+    { op: 'set', path: ['activeSubscription'], value: 'work' },
+  ])
+  // Clicking the row that already pays is a no-op.
+  assert.deepEqual(activationWriteOps(switched, switched, 'work'), [])
+  // Clicking the DEFAULT row writes the pointer back — the row has no stored
+  // ENTRY (the host synthesizes it), which is exactly why a targeted writer that
+  // only walked the stored entries used to answer "no ops" and leave the page
+  // claiming a switch the host never received.
+  const back = activateSubscription(switched, 'default')
+  assert.equal(back.activeSubscription, 'default')
+  assert.deepEqual(activationWriteOps(switched, back, 'default'), [
+    { op: 'set', path: ['activeSubscription'], value: 'default' },
+  ])
+  assert.deepEqual(activationWriteOps(back, back, 'default'), [], 'and the settled state is quiet')
+  // A hidden row cannot be activated at all.
+  const hidden = removeSubRow({ ...switched, activeSubscription: 'work' }, 'default')
+  assert.deepEqual(activationWriteOps(switched, hidden, 'default'), [])
+  // An unknown row key changes nothing.
+  assert.equal(activateSubscription(clean, 'ghost'), clean)
+
+  // A row that has never been SAVED still has its id (it was minted at birth),
+  // so the click commits the LIST as well — the host has never seen that id.
+  const added = addSubscriptionRow(clean)
+  const named = patchSubRow(added, added.subscriptions[2].key, { label: 'Home' })
+  const next = activateSubscription(named, named.subscriptions[2].key)
+  assert.deepEqual(activationWriteOps(clean, next, named.subscriptions[2].key), [
+    { op: 'set', path: ['subscriptions'], value: [{ id: 'work', label: '公司号' }, { id: 'sub-2', label: 'Home' }] },
+    { op: 'set', path: ['activeSubscription'], value: 'sub-2' },
+  ])
+  // Once that write lands, the same click is a no-op — the key the draft holds
+  // is the id the document holds, so nothing looks dirty any more.
+  assert.deepEqual(activationWriteOps(next, next, 'sub-2'), [])
+})
+
+test('writeOps emits the whole-array set ONLY when the block moved', () => {
+  const form = formFromView(baseView())
+  const added = addSubscriptionRow(form)
+  const named = patchSubRow(added, added.subscriptions[1].key, { label: 'Home' })
+  const ops = writeOps(form, named)
+  const sub = ops.filter((op) => op.path[0] === 'subscriptions')
+  assert.equal(sub.length, 1)
+  assert.deepEqual(sub[0].value, [{ id: 'sub-2', label: 'Home' }])
+  assert.deepEqual(writeOps(form, form).filter((op) => op.path[0] === 'subscriptions'), [])
+})
+
+test('validators refuse a nameless row, duplicate names, a bad id/slot, and an unusable key', () => {
+  const base = {
+    baseURL: 'https://x/v1', apiKeyEnv: 'K', sessionHeader: 'x-s', sessionHeaderEnabled: false,
+    sessionHeaderMode: 'session-id', disabled: [], extra: [], overrides: [], replaceDiscovered: false,
+    activeSubscription: 'default',
+  }
+  const defaultRow = { key: 'default', isDefault: true, id: 'default', label: '', apiKeyRef: 'OPENCODE_GO_API_KEY', apiKey: '' }
+  const validate = (rows) => validateForm({ ...base, subscriptions: [defaultRow, ...rows] })
+  const extra = (over) => ({ key: 'a', isDefault: false, id: '', label: '', apiKeyRef: '', apiKey: '', ...over })
+
+  // The id and slot derive from the NAME, so a row that claims anything (a key,
+  // a name) without one is refused on its name cell.
+  const nameless = validate([extra({ apiKey: 'sk-1' })])
+  assert.match(nameless['subscriptions[1].label'], /必填/u)
+  // Two rows may not share a name — the duplicate id that would follow is the
+  // exact document shape the host refuses to resolve.
+  const dup = validate([
+    extra({ key: 'a', id: 'work', label: '公司号' }),
+    extra({ key: 'b', id: 'work2', label: '公司号' }),
+  ])
+  assert.match(dup['subscriptions[2].label'], /重名/u)
+  // A stored id the host's own pattern would reject is surfaced on the row.
+  const badId = validate([extra({ id: 'bad id!', label: 'ok' })])
+  assert.match(badId['subscriptions[1].label'], /内部 id 不合法/u)
+  // There is no per-row credential slot to validate any more: the only slot a
+  // row can name is its derived one, and `subsBlockFrom` never writes one.
+  const slotted = extra({ id: 'okid', label: 'ok', apiKeyRef: '9bad' })
+  assert.deepEqual(subsBlockFrom({ subscriptions: [defaultRow, slotted] }), [{ id: 'okid', label: 'ok' }])
+  // A pasted key on ANY row (the default row included) must be header-carryable.
+  const badKey = validateForm({ ...base, subscriptions: [{ ...defaultRow, apiKey: 'sk-a\nb' }] })
+  assert.match(badKey['subscriptions[0].apiKey'], /控制字符|换行/u)
+  // An active pointer naming no row is refused, not silently reset.
+  const ghost = validateForm({ ...base, subscriptions: [defaultRow], activeSubscription: 'ghost' })
+  assert.match(ghost.activeSubscription, /不在列表里/u)
+})
+
+test('staged credentials are labelled per row, and every row owns its derived slot', () => {
+  const form = formFromView(baseView({
+    displayName: '主号',
+    apiKeyEnv: 'MY_KEY',
+    subscriptions: [{ id: 'work', label: '公司号' }],
+  }))
+  const staged = patchSubRow(
+    patchSubRow(form, 'default', { apiKey: 'sk-default-0123456789' }),
+    'work',
+    { apiKey: 'sk-work-0123456789' },
+  )
+  // `apiKeyEnv: MY_KEY` is the LIVE slot, not the default row's storage: the
+  // rows keep their own derived slots, so renaming the live variable can never
+  // move a stored key.
+  assert.deepEqual(stagedCredentialPlans(staged), [
+    { reference: 'OPENCODE_GO_DEFAULT', value: 'sk-default-0123456789', label: '主号', key: 'default' },
+    { reference: 'OPENCODE_GO_WORK', value: 'sk-work-0123456789', label: '公司号', key: 'work' },
+  ])
+})
+
+test('usageView whitelists the new row shape, and balanceCells reads each known window', () => {
+  const now = Date.UTC(2026, 8, 19)
+  const view = usageView({
+    ok: true,
+    subs: [{
+      id: 'work', label: 'work', apiKeyRef: 'W', isDefault: false, active: true, configured: true, source: 'store',
+      // The legacy spellings the row's key may still live under — the page clears
+      // them all, so the whitelist has to carry them.
+      fallbackRefs: ['OPENCODE_GO_SUB_2', '', 7],
+      // Fields the redesign removed: the whitelist must not let them through.
+      state: 'capped', detail: '周 92%', cap: { weekly: 90 }, enabled: true, baseURL: 'https://x/v1',
+      usage: { windows: { weekly: { status: 'ok', percent: 92, resetsAt: 'nope' } }, checkedAt: now, ageMs: 5, error: 'boom' },
+    }],
+  })
+  assert.equal(view.subs.length, 1)
+  const row = view.subs[0]
+  assert.equal(row.apiKeyRef, 'W')
+  assert.equal(row.active, true)
+  assert.equal(row.configured, true)
+  assert.equal(row.source, 'store')
+  assert.deepEqual(row.fallbackRefs, ['OPENCODE_GO_SUB_2'], 'the legacy spellings survive the whitelist, filtered to strings')
+  for (const gone of ['state', 'detail', 'cap', 'enabled', 'baseURL']) {
+    assert.equal(gone in row, false, `${gone} is not part of the new row shape`)
+  }
+  assert.equal(row.usage.checkedAt, now)
+  assert.equal(row.usage.ageMs, 5)
+  assert.equal(row.usage.error, 'boom')
+
+  assert.deepEqual(balanceCells(row), [
+    { window: 'weekly', label: '周', percent: 92, status: 'ok', resetsAt: 'nope', tone: 'warn' },
+  ])
+  // Tone rules: a non-`ok` status is bad, a missing percent is dim, >= 85 warns.
+  assert.equal(balanceCells({ usage: { windows: { rolling: { status: 'exhausted' } } } })[0].tone, 'bad')
+  assert.equal(balanceCells({ usage: { windows: { monthly: { status: 'ok' } } } })[0].tone, 'dim')
+  assert.equal(balanceCells({ usage: { windows: { weekly: { status: 'ok', percent: 83 } } } })[0].tone, 'ok')
+  assert.equal(balanceCells({ usage: { windows: { weekly: { status: 'ok', percent: 85 } } } })[0].tone, 'warn')
+  // Only KNOWN windows produce a cell; nothing measured means no bars at all.
+  assert.deepEqual(balanceCells({ usage: { windows: { hourly: { status: 'ok', percent: 10 } } } }), [])
+  assert.deepEqual(balanceCells({}), [])
+  assert.equal(resetPhrase(new Date(now + 90 * 60_000).toISOString(), now), '约 2 小时后重置')
+  assert.equal(resetPhrase('garbage', now), undefined)
+  // The line UNDER a pill says the same moment with fewer words — one parse, so
+  // the two can never disagree about when; only about how much room they have.
+  assert.equal(resetShort(new Date(now + 90 * 60_000).toISOString(), now), '2 小时后')
+  assert.equal(resetShort(new Date(now + 25 * 60_000).toISOString(), now), '25 分钟后')
+  assert.equal(resetShort(new Date(now + 50 * 3600_000).toISOString(), now), '2 天后')
+  // A moment already gone reads "due now", never a negative number.
+  assert.equal(resetShort(new Date(now - 5 * 60_000).toISOString(), now), '即将重置')
+  assert.equal(resetShort(undefined, now), undefined)
+  assert.equal(resetShort('garbage', now), undefined)
+  // The tooltip's stamp is the local wall clock, not the ISO blob.
+  const stampIso = new Date(now + 90 * 60_000).toISOString()
+  const stampAt = new Date(stampIso)
+  const pad = (value) => String(value).padStart(2, '0')
+  assert.equal(
+    resetStamp(stampIso),
+    `${pad(stampAt.getMonth() + 1)}-${pad(stampAt.getDate())} ${pad(stampAt.getHours())}:${pad(stampAt.getMinutes())}`,
+  )
+  assert.equal(resetStamp('garbage'), undefined)
+  assert.equal(resetStamp(undefined), undefined)
+})
+
+test('the page derives the SAME credential slot the host resolves', () => {
+  // The slot is named after the subscription, so the page and the host must
+  // agree on the slug AND on the id-derived fallback an unnamed row uses.
+  for (const [label, expected] of [
+    ['me@example.com', 'OPENCODE_GO_ME_EXAMPLE_COM'],
+    ['work@example.com', 'OPENCODE_GO_WORK_EXAMPLE_COM'],
+    ['Work号', 'OPENCODE_GO_WORK'],
+    ['a-b.c', 'OPENCODE_GO_A_B_C'],
+  ]) {
+    assert.equal(subscriptionSlotOf({ id: 'work', label }), expected)
+    assert.equal(refForSubscriptionLabel(label), expected, 'the host derives the same name')
+  }
+  // A row with no usable name falls back to the stable id-derived spelling.
+  assert.equal(subscriptionSlotOf({ id: 'sub-2', label: '' }), 'OPENCODE_GO_SUB_2')
+  assert.equal(subscriptionSlotOf({ id: DEFAULT_SUB_ID, isDefault: true }, '默认'), 'OPENCODE_GO_DEFAULT')
+  assert.equal(refForSubscriptionLabel('默认'), undefined, 'a name with no A-Z0-9 has no slug')
+})
+
+test('a rename MOVES the slot, and the id-derived spelling stays as the fallback', () => {
+  // Slots follow the name now. The id-derived spelling is what the runtime keeps
+  // as a fallback (and what `migrateSlots` copies FROM), so a rename does not
+  // lose the key — but the slot the page shows must move with the name.
+  assert.equal(subscriptionSlotOf({ id: 'sub-2', label: '公司号' }), 'OPENCODE_GO_SUB_2', 'no slug in that name')
+  assert.equal(subscriptionSlotOf({ id: 'sub-2', label: 'Work号' }), 'OPENCODE_GO_WORK')
+  const [row] = normalizeSubscriptions([{ id: 'sub-2', label: 'Work号' }], { apiKeyEnv: 'MAIN' }).slice(1)
+  assert.equal(row.apiKeyRef, 'OPENCODE_GO_WORK')
+  assert.deepEqual(row.fallbackRefs, ['OPENCODE_GO_SUB_2'])
+})
+
+test('usageView ignores the live-slot block the page no longer shows', () => {
+  // The host still reports it (diagnostics); the page deliberately does not read
+  // it, and `subs` remains a strict whitelist of the row shape.
+  const view = usageView({
+    ok: true,
+    live: { liveRef: 'OPENCODE_GO_API_KEY', value: 'sk-SECRET-not-real' },
+    subs: [{ id: 'work', label: '公司号', apiKeyRef: 'W', active: true }],
+  })
+  assert.equal('live' in view, false)
+  assert.equal(view.subs.length, 1)
+  assert.equal(view.subs[0].apiKeyRef, 'W')
+})
+
+test('host rejections on subscription paths land on the subscriptions field', () => {
+  assert.ok(errorPathsOf('opencode-go-native: subscriptions[1].id is not a valid subscription id').includes('subscriptions[1]'))
+  assert.ok(errorPathsOf('opencode-go-native: subscriptions["work"].label is longer than 60 characters').includes('subscriptions[work]'))
+  assert.ok(errorPathsOf('subscriptions must be an array').includes('subscriptions'))
+})
+
+test('preserveDraftScalars keeps subscription typing across a models-only commit', () => {
+  const saved = formFromView(baseView())
+  const added = addSubscriptionRow(saved)
+  const draft = patchSubRow(added, added.subscriptions[1].key, { label: 'typing' })
+  const merged = preserveDraftScalars(saved, draft)
+  assert.equal(merged.subscriptions.length, 2, 'the half-typed row survives the commit')
+  assert.equal(merged.subscriptions[1].label, 'typing')
 })
