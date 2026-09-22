@@ -26,7 +26,7 @@ dsh plugin --profile web add /absolute/path/to/dsh-opencodego
 
 # 发布包
 npm pack
-dsh plugin --profile web add ./dsh-opencodego-0.8.3.tgz
+dsh plugin --profile web add ./dsh-opencodego-0.9.0.tgz
 ```
 
 卸载:`dsh plugin --profile web remove dsh-opencodego`
@@ -58,13 +58,28 @@ dsh plugin --profile web add ./dsh-opencodego-0.8.3.tgz
 |---|---|
 | **还能不能用** | 真的发一次请求。已下架 / 区域门控 / 协议不通都会说清原因,**并建议换用哪个** |
 | **协议** | 优先用 models.dev 推荐的(没有就用 OpenAI 格式),然后**实测确认它真的应答** |
-| **上下文 / 最大输出 / 图片** | 取 models.dev 上官方一手声明,**不发请求** |
+| **上下文 / 最大输出 / 图片** | 取 models.dev 上官方一手声明,**不发网关请求**;插件内置一份发布期快照做保底,新模型在同步/获取模型时会**当场去 models.dev 拉**(见下) |
 | **思考档位** | 先按官方契约逐档实测;**全通过就填官方那几档**;官方没记录才退化成逐档试,能用的才填 |
 
 **只有同步过的模型才显示能力信息。** 同步前那一行会写"能力信息还没取过"——
 因为声明出来的数字和实测出来的数字长得一样,混在一起就分不清了。
 
 同步中随时可以「停止」,已经同步完的会保留。
+
+### 3. 官方数据是活的(0.9.0)
+
+打包在插件里的那份 models.dev 数据是**发布期快照**,只当保底。运行期插件自己会去
+`models.dev`(raw GitHub)读每个模型的官方声明:
+
+- **网关上了新模型** → 「获取可用模型」/「信息同步」时就把它对应的那几个 TOML 拉下来,
+  所以新模型的上下文/输出/模态不用等插件发版;
+- 已经拉过的记录按 TTL(默认 24 小时)重读一次,上游改了数字这边跟着改;
+- **拉不到就退回打包那份**,不会因为 GitHub 连不上而少一个数字;上游确实没收录的 id
+  会记成"未收录",冷却期内不再重复问;
+- 缓存落在 `$DSH_HOME/opencode-go.official-cache.json`;诊断面板的
+  「官方声明数据」一行写着内置几条、运行期拉了几条、哪些失败。
+
+优先级永远是:**你的手改(`models.overrides`) > 同步实测 > 运行期声明 > 打包声明 > 保守默认**。
 
 ---
 
@@ -78,6 +93,10 @@ dsh plugin --profile web add ./dsh-opencodego-0.8.3.tgz
 | `apiKeyEnv` | **生效变量**:当前订阅的 key 会被复制到这个变量上;换订阅就换它的值。默认 `OPENCODE_GO_API_KEY`,一般不用改 |
 | `baseURL` | 网关地址,默认 `https://opencode.ai/zen/go/v1`,**要带 `/v1`**;整个插件共用一个 |
 | 会话头 | 网关要求的路由头,默认开,一般不用动 |
+| `officialSync` | 运行期去 models.dev 拉官方声明,默认开。关掉 = 只用插件内置的那份快照 |
+| `officialSyncTtlMs` | 拉过的记录多久重读一次,默认 24 小时 |
+| `officialSyncTimeoutMs` | 单个文件读取超时(也是"新模型"那次拉取的预算),默认 10 秒 |
+| `officialBaseUrl` | 上游地址,默认 `https://raw.githubusercontent.com/anomalyco/models.dev/dev`,一般不用改 |
 
 每个模型还可以单独改协议 / 上下文 / 输出 / 输入模态 / 思考档位(展开那一行的 `▸`),改完即生效。
 

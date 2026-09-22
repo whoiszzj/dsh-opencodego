@@ -143,6 +143,9 @@ export class OpenCodeGoAdapter extends LlmAdapter {
    * @param {import('./subruntime.js').object} [config.subs] - the subscription
    *   runtime (`active`/`activeKey`/`rows`). Absent means "one implicit
    *   subscription", which is the pre-0.8 programmatic shape.
+   * @param {import('./official-runtime.js').OfficialRuntime} [config.officialRuntime] - the runtime
+   *   models.dev layer, read for diagnostics only (`snapshot()`); the numbers it fetched already
+   *   reach every request through the catalogue.
    * @param {() => object | undefined} [config.resolveAttachments] - the durable
    *   attachment service, read at request time (it may activate after this plugin).
    * @param {(attachments: object, ref: object) => object | undefined} [config.resolveImageAccess]
@@ -211,6 +214,9 @@ export class OpenCodeGoAdapter extends LlmAdapter {
       // else here — a diagnostics read itself probes nothing, which is why this
       // uses the sync `rows()` and not the credential-describing `view()`.
       subscriptions: this.config.subs !== undefined ? this.config.subs.rows() : undefined,
+      // The runtime declaration layer's own counters (where a declared number
+      // came from: the bundled release-time file, or a live models.dev read).
+      official: this.config.officialRuntime?.snapshot(),
     }, limits)
   }
 

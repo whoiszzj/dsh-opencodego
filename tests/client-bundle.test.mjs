@@ -730,9 +730,16 @@ test('the model list shows every active model WITH its official facts, and no da
   assert.match(chipText, /输入 text\+image/u)
   assert.match(chipText, /思考 low\/high/u)
   // The words the operator asked to be rid of: GONE from the page.
-  for (const word of ['端点', '手写', '已排除', '冻结', '恢复默认模型', '刷新目录', '目录来源', '正在使用端点模型', '已自定义模型目录', '未收录', 'models.dev']) {
+  // `models.dev` is deliberately NOT banned any more (0.9.0): the declared
+  // numbers are read from it at runtime, so the page naming that source is the
+  // honest thing to do. What stays banned is the data-layer vocabulary that made
+  // the page read like a control panel for an ETL job.
+  for (const word of ['端点', '手写', '已排除', '冻结', '恢复默认模型', '刷新目录', '目录来源', '正在使用端点模型', '已自定义模型目录', '未收录']) {
     assert.ok(!page.text.includes(word), `the page must not speak "${word}"`)
   }
+  // …and the provenance line names the live source together with its fallback.
+  assert.match(page.text, /models\.dev/u)
+  assert.match(page.text, /运行期同步/u)
   page.restore()
 })
 
@@ -753,7 +760,10 @@ test('every listed model shows its EFFECTIVE numbers — no catalog-membership l
 
 test('the source line names the two layers, and a failed gateway refresh is shown', async () => {
   const page = await harness({ catalogue: [modelOf('alpha')] })
-  assert.match(page.text, /模型名单来自网关 \/models；能力值取插件保存的模型状态/u)
+  // 0.9.0: the declaration layer is live (models.dev, read at runtime) with the
+  // bundled copy as the offline floor — the line promises both, verbatim.
+  assert.match(page.text, /模型名单来自网关 \/models；能力值优先取 models\.dev 的最新声明/u)
+  assert.match(page.text, /回退到插件内置数据/u)
   assert.equal(page.control('action.resetModels'), undefined, 'there is no reset affordance any more')
   page.restore()
   const stale = await harness({

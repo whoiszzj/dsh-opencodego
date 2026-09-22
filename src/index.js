@@ -40,6 +40,7 @@ import { createLegacyKeyMigrationRunner } from './migration.js'
 import { protocolChainForModel, resolveProtocol } from './protocol-map.js'
 import { loadSnapshot } from './snapshot.js'
 import { loadOfficialBaseline, officialRecordFor } from './official-baseline.js'
+import { defaultOfficialCachePath, OfficialRuntime } from './official-runtime.js'
 import { requestHeaders, SessionHeaderMap } from './session.js'
 import { createSubRuntime } from './subruntime.js'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
@@ -301,15 +302,47 @@ export function apply(ctx, config) {
   }
 
   // The OFFICIAL capability baseline (`data/opencode-go.official.json`): what
-  // each model's own authoring provider declares, read from models.dev at BUILD
-  // time (`npm run official:fetch`) and never fetched at runtime. It supplies
-  // context/output/modalities, and the contract a sync then tests.
+  // each model's own authoring provider declares. It is the RELEASE-TIME
+  // snapshot of models.dev — the offline floor — and since 0.9.0 the runtime
+  // layer below reads the same files live for whatever the bundle cannot answer
+  // for. It supplies context/output/modalities, and the contract a sync tests.
   const officialResult = loadOfficialBaseline()
   if (!officialResult.ok) {
     ctx.logger.warn(`[${PKG}] official capability baseline unavailable, sync will have nothing to test: ${officialResult.error}`)
   } else if (initial.debug) {
     ctx.logger.info(`[${PKG}] official baseline: ${officialResult.baseline.modelCount} models from models.dev @${officialResult.baseline.source?.commit ?? '?'}`)
   }
+
+  // The RUNTIME official layer (0.9.0): the same models.dev declarations, read
+  // live for the ids the bundle does not know, and re-read on a TTL for the ones
+  // it does. It writes into the ONE document every consumer already reads
+  // (`officialRecordFor` → `ModelCatalog#snapshotEntryFor` →
+  // `composeEntryFaces`), so nothing downstream needs a second case and the
+  // operator's `models.overrides` still wins over both layers.
+  //
+  // The document is a COPY: the bundled file's parsed object is shared with
+  // nothing else, and `modelCount` is kept honest as records arrive.
+  const officialRuntime = OfficialRuntime.load({
+    document: officialResult.ok
+      ? { ...officialResult.baseline, models: { ...officialResult.baseline.models } }
+      : undefined,
+    options,
+    base: initial.officialBaseUrl,
+    ttlMs: initial.officialSyncTtlMs,
+    timeoutMs: initial.officialSyncTimeoutMs,
+    path: defaultOfficialCachePath(),
+    log,
+  })
+  if (officialRuntime.loadError !== undefined) {
+    ctx.logger.warn(`[${PKG}] runtime official cache unusable, starting from the bundled baseline: ${officialRuntime.loadError}`)
+  }
+  if (!initial.snapshotEnabled) {
+    ctx.logger.info(`[${PKG}] snapshot face off: neither the bundled baseline nor the models.dev runtime layer is consulted`)
+  } else if (!initial.officialSync) {
+    ctx.logger.info(`[${PKG}] officialSync off: declared numbers come from the bundled baseline only`)
+  }
+  /** The one declaration document the catalogue, the sync route and the adapter read. */
+  const official = officialRuntime.document
 
   // The SYNCED layer (`$DSH_HOME/opencode-go.synced.json`): what a sync actually
   // measured on THIS account. It overlays the bundled snapshot and sits under
@@ -449,8 +482,14 @@ export function apply(ctx, config) {
     // The official baseline's DECLARED numbers (context/output/modalities) join
     // every entry at the catalog's single merge point; without this hook the
     // baseline fed only the sync route and every model ran on conservative
-    // defaults (the 200K bug).
-    official: officialResult.ok ? officialResult.baseline : undefined,
+    // defaults (the 200K bug). The document is the MERGED one: bundled records
+    // plus everything the runtime layer has fetched into it.
+    official,
+    // The runtime layer's own seam: `refresh` asks it for the declarations of
+    // the ids no face answers for (awaited, budgeted) and for a background
+    // re-read of the stale ones.
+    officialRuntime,
+    officialNameFor: (id) => officialRuntime.nameFor(id),
   })
   const adapter = new OpenCodeGoAdapter({
     provider: PROVIDER,
@@ -461,6 +500,7 @@ export function apply(ctx, config) {
     // that has no runtime at all.
     subs,
     catalog,
+    officialRuntime,
     log,
     // Images are read through the host's own seams, exactly as the official
     // `dsh-llm-pi-ai` adapter does: the attachment service is resolved lazily
@@ -759,9 +799,16 @@ export function apply(ctx, config) {
               overrides: facts.protocolOverrides,
               snapshotNpm,
             })
-            const official = officialResult.ok
-              ? officialRecordFor(officialResult.baseline, modelId)
-              : undefined
+            // A sync is the SECOND moment the declaration face is completed
+            // (the catalogue refresh is the first): a model nobody has listed
+            // yet still gets its official contract before it is probed, so the
+            // sync tests the real contract instead of falling back to the whole
+            // ladder. Best-effort by contract — a failed fetch leaves the
+            // bundled record (or none) exactly as it was.
+            if (facts.snapshotEnabled && facts.officialSync) {
+              await officialRuntime.ensure(modelId).catch(() => 'failed')
+            }
+            const officialRecord = officialRecordFor(official, modelId)
             const sessionValue = syncSessions.valueFor(body.sessionId, facts.sessionHeaderMode)
             const result = await syncModel({
               id: modelId,
@@ -782,7 +829,7 @@ export function apply(ctx, config) {
                 snapshotNpm,
                 maxAttempts: 3,
               }).filter((candidate) => candidate !== primary),
-              official,
+              official: officialRecord,
             })
             // Persist BEFORE answering: a reply the page cannot re-read after a
             // refresh would be a measurement the user has to re-take.

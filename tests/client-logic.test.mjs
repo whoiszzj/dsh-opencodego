@@ -696,13 +696,16 @@ test('capabilityChips shows the EFFECTIVE facts — the numbers dsh loads, corre
   assert.deepEqual(corrected, ['openai-completions', '上下文 4K', '输出 1K', '输入 text'])
 })
 
-test('the model-source line names the TWO sources and nothing else', () => {
+test('the model-source line names where the numbers come from, and the fallback', () => {
   const line = modelSourceLine()
   assert.match(line, /网关 \/models/u)
-  assert.match(line, /插件保存的模型状态/u)
+  // 0.9.0: the declared numbers are read from models.dev AT RUNTIME, so the page
+  // names that source — and names what happens when the read fails, because
+  // "the numbers are still there" is the promise the bundled copy makes.
+  assert.match(line, /models\.dev/u)
+  assert.match(line, /运行期同步/u)
+  assert.match(line, /回退到插件内置数据/u)
   assert.match(line, /保守默认/u)
-  // The page no longer speaks of a third party at runtime.
-  assert.ok(!line.includes('models.dev'), line)
 })
 
 test('the picker reads refreshError off the catalogue payload', () => {

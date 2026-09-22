@@ -69,6 +69,11 @@ export class ModelCatalog {
    * @param {import('./synced.js').SyncedLayer | undefined} [hooks.synced] - the measured capability layer.
    * @param {object | undefined} [hooks.official] - the parsed official capability baseline document
    *   (`data/opencode-go.official.json`); its declared numbers join entries in {@link ModelCatalog#snapshotEntryFor}.
+   *   The RUNTIME layer (`official-runtime.js`) writes its fetched records into this very document, so the
+   *   merge point below needs no second case.
+   * @param {import('./official-runtime.js').OfficialRuntime | undefined} [hooks.officialRuntime] - the runtime
+   *   declaration layer; `refresh` asks it to resolve the ids no declaration answers for.
+   * @param {(id: string) => string | undefined} [hooks.officialNameFor] - the upstream display name for one id.
    * @param {(level: 'info' | 'warn' | 'error', message: string) => void} hooks.log
    */
   constructor(hooks) {
@@ -97,6 +102,13 @@ export class ModelCatalog {
      * @type {string | undefined}
      */
     this.targetKey = undefined
+    /**
+     * The last models.dev declaration pass: which ids it fetched, which upstream
+     * does not know, which it could not ask about. Diagnostics only — the
+     * records themselves live in the runtime layer's document.
+     * @type {{ at: number, fetched: string[], absent: string[], failed: string[], pending: string[] } | undefined}
+     */
+    this.official = undefined
   }
 
   /** The last successfully discovered models; empty while none has succeeded. */
@@ -135,9 +147,27 @@ export class ModelCatalog {
     const ids = effectiveModelIds(discovered.map((model) => model.id), options.models)
     return ids.map((id) => {
       const declared = options.models.extra[id]
-      const name = declared?.name ?? this.find(id)?.name ?? id
+      const name = declared?.name ?? this.find(id)?.name ?? this.#upstreamName(id) ?? id
       return { id, name }
     })
+  }
+
+  /**
+   * The name to fall back on when neither the endpoint nor the bundled snapshot
+   * names a model.
+   *
+   * A model the gateway advertises as a bare id is usually a NEW model, and the
+   * runtime layer is the only thing that has ever read a human name for it — the
+   * `name` field of the models.dev file it just fetched. Asking it here is what
+   * turns a row reading `mimo-v2.6-pro` into `MiMo-V2.6-Pro` without inventing a
+   * prettifier.
+   * @param {string} id - the model id.
+   * @returns {string | undefined} the upstream name, when one was read.
+   */
+  #upstreamName(id) {
+    if (this.hooks.options().snapshotEnabled !== true) return undefined
+    const name = this.hooks.officialNameFor?.(id)
+    return typeof name === 'string' && name.length > 0 ? name : undefined
   }
 
   /** The ids of {@link effectiveModels}, in the same order. */
@@ -244,7 +274,14 @@ export class ModelCatalog {
     const target = `${options.baseURL}\u0000${credential}`
     const sameTarget = this.targetKey === target
     const fresh = this.catalog !== undefined && sameTarget && age < options.syncTtlMs
-    if (!request.force && fresh) return this.catalog
+    if (!request.force && fresh) {
+      // A fresh LIST is not a fresh DECLARATION: a model the operator just
+      // enabled may have appeared upstream seconds ago, and its numbers are read
+      // from models.dev rather than from the list. The pass is a no-op (no
+      // request at all) unless some advertised id has no declaration anywhere.
+      await this.#ensureOfficialDeclarations(options, request.signal)
+      return this.catalog
+    }
     if (this.inFlight !== undefined && sameTarget) return this.inFlight
     if (request.signal?.aborted === true) return this.models()
     if (this.catalog !== undefined && !sameTarget) {
@@ -258,7 +295,7 @@ export class ModelCatalog {
     // through the TTL instead, and the TTL is measured from the last success.
     this.targetKey = target
     const run = this.#load(options, request.signal)
-      .then((models) => {
+      .then(async (models) => {
         if (generation !== this.generation) return this.models()
         this.catalog = models
         const advertised = models.map((model) => model.id)
@@ -287,6 +324,10 @@ export class ModelCatalog {
         if (unknownModels.length > 0) {
           this.hooks.log('info', `advertised but not catalogued (conservative defaults): ${unknownModels.join(', ')}`)
         }
+        // The DECLARATION pass runs after the LIST is known, and it is what makes
+        // a model the gateway started serving today carry its real numbers today
+        // instead of `defaultContextWindow` until the next release (0.9.0).
+        await this.#ensureOfficialDeclarations(options, request.signal)
         return models
       })
       .catch((error) => {
@@ -328,6 +369,60 @@ export class ModelCatalog {
       })
     this.inFlight = run
     return run
+  }
+
+  /**
+   * Resolve the models.dev declarations for what this catalogue advertises.
+   *
+   * Two passes with deliberately different urgency:
+   *
+   *   1. ids NO declaration answers for (a model that appeared after the last
+   *      release) are AWAITED and budgeted — the numbers the operator is about
+   *      to read are exactly what this fetches, and a slow upstream may delay a
+   *      page read but never wedge it;
+   *   2. ids whose record has merely gone stale are refreshed in the BACKGROUND:
+   *      those numbers are already serving, so the re-read is an improvement,
+   *      not a prerequisite. Only the effective ids are considered — re-reading
+   *      declarations for models nobody enabled is requests nobody asked for.
+   *
+   * Nothing here can fail the catalogue: the runtime layer never throws, and a
+   * broken network leaves every bundled record exactly where it was.
+   *
+   * @param {object} options - the connection facts of this attempt.
+   * @param {AbortSignal} [signal] - the caller's cancellation.
+   * @returns {Promise<void>} resolves when the awaited pass is done.
+   */
+  async #ensureOfficialDeclarations(options, signal) {
+    const runtime = this.hooks.officialRuntime
+    if (runtime === undefined) return
+    // `snapshotEnabled` is the declaration-face switch and it governs BOTH
+    // declaration layers (invariant #11): an operator who turned the bundled
+    // claims off did not ask for the same claims from the network instead.
+    if (options.snapshotEnabled !== true || options.officialSync !== true) return
+    const advertised = (this.catalog ?? []).map((model) => model.id)
+    if (advertised.length === 0) return
+    const budgetMs = options.officialSyncTimeoutMs
+    try {
+      const missing = await runtime.ensureMany(advertised, { signal, budgetMs })
+      this.official = {
+        at: Date.now(),
+        fetched: missing.fetched,
+        absent: missing.absent,
+        failed: missing.failed,
+        pending: missing.pending,
+      }
+      // Whatever the budget cut short, and every record that has merely gone
+      // stale, is picked up WITHOUT a page waiting for it: the first read of a
+      // new model may legitimately take longer than one page read should, and
+      // the numbers land for the next one.
+      const backgroundMs = budgetMs * 6
+      if (missing.pending.length > 0) {
+        void runtime.ensureMany(missing.pending, { budgetMs: backgroundMs })
+      }
+      void runtime.refreshStale(this.effectiveIds(options), { budgetMs: backgroundMs })
+    } catch (error) {
+      this.hooks.log('warn', `the models.dev declaration pass failed: ${describeTransportError(error)}`)
+    }
   }
 
   /**
@@ -377,9 +472,13 @@ export class ModelCatalog {
       const id = typeof entry?.id === 'string' ? entry.id : undefined
       if (id === undefined || id.length === 0 || seen.has(id)) continue
       seen.add(id)
-      const listed = typeof entry?.name === 'string' && entry.name.length > 0 ? entry.name : undefined
+      const listedName = typeof entry?.name === 'string' && entry.name.trim().length > 0 ? entry.name.trim() : undefined
+      // The endpoint usually repeats the id in its `name` field, which is not a
+      // name — and letting that through is what kept the catalogued (and now the
+      // upstream) display name permanently invisible.
+      const listed = listedName === id ? undefined : listedName
       const catalogued = options.snapshotEnabled === true ? this.hooks.snapshot?.entryFor(id)?.name : undefined
-      models.push({ id, name: listed ?? catalogued ?? id })
+      models.push({ id, name: listed ?? catalogued ?? this.#upstreamName(id) ?? id })
     }
     models.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
     return models

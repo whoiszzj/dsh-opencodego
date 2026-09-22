@@ -21,7 +21,8 @@ src/                 宿主半边(会被 build.mjs 原样复制到 lib/)
   protocol-map.js    provider.npm -> 协议 规则,候选链
   sync.js            能力同步引擎(协议/可用性/reasoning 探针)
   synced.js          同步结果的落盘层
-  official-baseline.js  models.dev 一手声明的解析与加载
+  official-baseline.js  models.dev 一手声明的解析与加载(构建期与运行期共用同一套规则)
+  official-runtime.js   运行期声明层:新模型现拉 + TTL 重读 + $DSH_HOME 缓存 + 失败回退打包数据
   official-toml.js     自包含 TOML 子集解析器
   catalog.js / snapshot.js   模型集合与 provider.npm 快照
   capabilities.js    声明 -> pi-ai 的能力映射
@@ -52,6 +53,12 @@ scripts/             获取数据 / 探针 / e2e-active-sub(离线假网关验�
 9. **`replaceDiscovered` 默认 `true`** —— 全新安装不加载任何模型。它必须和 `src/config.js` 的 schema 默认值保持一致,否则页面和路由对"启用集合"给出不同答案。
 10. **`data/opencode-go.models.json` 只放 `name` 和 `npm`**。能力数字一律来自同步,放回来就是制造第二个互相打架的数据源。
 11. **官方基线数字只在 `synced.js#composeEntryFaces` 合并**(由 `catalog.snapshotEntryFor` 唯一调用):只合 `contextWindow`/`maxTokens`/`inputModalities` 三个声明类字段,reasoning/protocol/interleavedField 仍归 synced 实测层;`snapshotEnabled: false` 时官方数字随快照面一起关。改这条优先级顺序 = 重新制造 200K 兜底 bug,`tests/official-capability.test.mjs` 钉着。
+    **0.9.0 起声明面有两层,但只有一个合并点**:打包的 `data/opencode-go.official.json`(发布期快照 = 离线保底)和
+    `official-runtime.js` 运行期拉取的同源记录,后者**写进同一个 document**(`officialRuntime.document`),所以
+    `officialRecordFor` / `snapshotEntryFor` / sync 路由读到的永远是合并后的那一份。优先级:
+    `models.overrides` > synced 实测 > 运行期声明 > 打包声明 > `defaultContextWindow`。
+    运行期层受 `snapshotEnabled` **和** `officialSync` 双重开关(`catalog.#ensureOfficialDeclarations` 里那行
+    `if (options.snapshotEnabled !== true || options.officialSync !== true) return`)。
 12. **同一时刻只有一个"付款人"(0.8.2)/ 只有一个"生效变量"(0.8.3)**:`options.activeSubscription` 是一个
     **标量指针**,请求路径只解析它指的那一条(`subruntime#activeKey`),发现/同步/目录也用同一把。
     没有池、没有轮换、没有冷却、没有余额闸门——活跃那条失败就**照实报错**,绝不偷偷换成另一条。
@@ -115,11 +122,23 @@ scripts/             获取数据 / 探针 / e2e-active-sub(离线假网关验�
 | 上游 | 决定什么 | 什么时候动 |
 |---|---|---|
 | 网关 `/models` | **哪些模型存在** | 运行期自动,不用管 |
-| models.dev 仓库 | **每个模型的官方声明** | 手动刷新 |
+| models.dev 仓库 | **每个模型的官方声明** | **运行期自动**(新模型现拉 + TTL 重读);打包那份只是离线保底 |
 
-**运行时永远不抓第三方。** 声明只从打包的文件来,所以不会"今天一个数明天一个数"。
+**0.9.0 起运行时抓 models.dev。** 打包的 `data/opencode-go.official.json` 是**发布期快照 = 保底**:
+网关上了新模型、而 models.dev 已经有它的 TOML 时,`official-runtime.js` 直接按 `base_model` 规则把
+那几个文件拉下来,写进 catalogue 读的那份 document(缓存落 `$DSH_HOME/opencode-go.official-cache.json`)。
+所以"今天一个数明天一个数"的担心靠**优先级**解决,不靠不抓:声明永远排在实测(`synced`)和操作者
+`models.overrides` **下面**,而且每个数都带来源(诊断面板「官方声明数据」一行 + 日志环)。
+
+- 只有**新 id**(谁都没声明过)是**阻塞**拉取的,并且有 `officialSyncTimeoutMs` 预算;拉不完的进后台补。
+- 已知记录的 TTL 重读、以及预算没跑完的部分,都走**后台**(不阻塞页面)。
+- 失败一律降级:上游 404 = `absent`(记下来,冷却期内不再问),网络不通 = 打包数据继续服务,
+  第一次失败就把整条 base 标记为"不可达"直到冷却结束,免得一个 pass 里付 N 次超时。
+- 关掉:`officialSync: false`(只读打包数据),或 `snapshotEnabled: false`(整个声明面关掉,两层一起关)。
 
 ## 更新 models.dev 数据
+
+打包那份现在**只在发版时刷**(给连不上 GitHub 的人兜底),但刷的流程没变:
 
 ```bash
 npm run official:fetch     # 只重拉"上次用到的那些 TOML"
@@ -129,7 +148,7 @@ npm run official:check     # CI:不一致就非零退出
 
 - 基线里每个模型都记着 `sources`(它是从哪几个文件读出来的),所以刷新**只拉那几个文件**(实测 37 个模型 → 113 个文件),不是 clone 仓库。
 - 上游改了某个 TOML → 直接刷新 review,**不用改代码**。
-- 网关上了**新模型** → 会报 `unresolved`。这时:
+- 网关上了**新模型** → 运行期层自己会拉(这是 0.9.0 的重点),发版时想把它写进保底数据才需要下面这套:
   1. 看它归属哪个 lab(`models/<lab>/<id>.toml`)
   2. provider 目录名和 lab 名不一样 → 往 `src/official-baseline.js` 的 `LAB_PROVIDER_ALIASES` 加一条(现有:`meituan→longcat`、`tencent→tencent-tokenhub`)
   3. 还是找不到 → 用离线冷启动,它能列目录、按 `base_model` 反查:
@@ -138,6 +157,9 @@ npm run official:check     # CI:不一致就非零退出
      curl -sS -o /tmp/ids.json https://opencode.ai/zen/go/v1/models
      npm run official:fetch -- --repo /tmp/models.dev --input /tmp/ids.json
      ```
+     注意 `--repo` 会给**所有** id 重新解析,所以必须对着完整 clone 跑,拿最小目录跑会把别的模型的数字洗掉。
+     另外网络模式(`--models` 直接跑)**解析不了全新 id**(它只预热"记录过的路径",实测会产出一条空记录)——
+     这正是运行期层要自己按规则预热候选路径的原因。
 - **解析不到就记 `unresolved`,绝不拿别的厂商的数字顶上。**
 
 可选:`npm run models:fetch`(刷新 `name`/`npm` 快照)。

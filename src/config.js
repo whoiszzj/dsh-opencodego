@@ -17,6 +17,11 @@
 import z from '@deepseek-ai/schemastery'
 import { normalizeBaseUrl } from './base-url.js'
 import { normalizeModelOverlay } from './models.js'
+import {
+  DEFAULT_OFFICIAL_BASE_URL,
+  DEFAULT_OFFICIAL_SYNC_TIMEOUT_MS,
+  DEFAULT_OFFICIAL_SYNC_TTL_MS,
+} from './official-runtime.js'
 import { normalizeSubscriptions, resolveActiveSubscription } from './subs.js'
 import { normalizeSessionHeaderMode, normalizeSessionHeaderName } from './session.js'
 import {
@@ -28,6 +33,7 @@ import {
 } from './vocab.js'
 
 export {
+  DEFAULT_OFFICIAL_BASE_URL,
   FALLBACK_PROTOCOL,
   HOST_THINKING_LEVELS,
   PKG,
@@ -120,6 +126,10 @@ export const DEFAULT_MAX_REQUEST_IMAGE_BYTES = 20_971_520
  * @property {object[]} [subscriptions] The API keys behind this route: `{ id, label?, hidden? }`. Each row's key lives in the credential store under a slot NAMED AFTER THE ROW (`me@example.com` → `OPENCODE_GO_ME_EXAMPLE_COM`; an unnamed row keeps the stable id-derived spelling, which is also the read fallback when a row is renamed); the ACTIVE row's value is mirrored into the top-level `apiKeyEnv` on every switch. There is deliberately no per-subscription credential reference, gateway address, or balance cap. `hidden: true` on the reserved `default` entry is how that synthesized row is taken off the list (its credential slot survives).
  * @property {string} [activeSubscription] The id of the ONE subscription that pays. An unknown or hidden id falls back to the first visible row.
  * @property {boolean} [snapshotEnabled] Use the plugin's bundled model-state file for capabilities and protocol rules. Read locally, never fetched at runtime; refresh it deliberately with `npm run models:fetch`.
+ * @property {boolean} [officialSync] Read each model's declared numbers (context/output/modalities) from models.dev at RUNTIME, for the ids the bundled baseline does not know and on a TTL for the ones it does. The bundled file is the offline floor: a failed or unavailable fetch never removes a number, it only leaves the bundled one in place.
+ * @property {number} [officialSyncTtlMs] How long a runtime-fetched record stays fresh before it is re-read upstream.
+ * @property {number} [officialSyncTimeoutMs] Ceiling on ONE upstream file read, and the budget of one awaited "new models" pass.
+ * @property {string} [officialBaseUrl] Raw upstream base for the models.dev `dev` branch (no trailing slash).
  * @property {boolean} [protocolFallback] Keep `openai-completions` as the last candidate for every model.
  * @property {boolean} [honorProtocolOverrides] An explicit pin is never reordered by the learned-refusal memo.
  * @property {number} [requestImagePixelBudget] Pixel budget for one request image.
@@ -213,6 +223,17 @@ export const Config = z.object({
   // resyncs the file deliberately with `npm run models:fetch`. Off ⇒
   // conservative defaults + the bootstrap protocol table.
   snapshotEnabled: z.boolean().default(true),
+  // The DECLARATION face at runtime (0.9.0). The bundled official baseline is a
+  // release-time snapshot: a model the gateway starts serving between two
+  // releases has no record in it, and used to run on `defaultContextWindow`
+  // until the next publish. With this on, the plugin reads the same models.dev
+  // files the build-time refresh reads — for the ids the bundle does not know,
+  // and on a TTL for the ones it does — and writes them into the very document
+  // the catalogue reads. Off ⇒ bundled data only (the pre-0.9 behaviour).
+  officialSync: z.boolean().default(true),
+  officialSyncTtlMs: z.number().step(1).min(0).default(DEFAULT_OFFICIAL_SYNC_TTL_MS),
+  officialSyncTimeoutMs: z.number().step(1).min(1000).default(DEFAULT_OFFICIAL_SYNC_TIMEOUT_MS),
+  officialBaseUrl: z.string().default(DEFAULT_OFFICIAL_BASE_URL),
   protocolFallback: z.boolean().default(true),
   honorProtocolOverrides: z.boolean().default(true),
   requestImagePixelBudget: z.number().step(1).min(1).default(DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET),
@@ -321,6 +342,25 @@ export function resolveOptions(config = {}) {
     throw new Error(`${PKG}: syncTtlMs must be a finite non-negative number`)
   }
 
+  // The runtime declaration face (0.9.0). Every bound is re-judged here for the
+  // same reason as everywhere else: a programmatic construction may bypass
+  // Schemastery, and a TTL of `NaN` would silently mean "never fresh".
+  const officialSyncTtlMs = config.officialSyncTtlMs ?? DEFAULT_OFFICIAL_SYNC_TTL_MS
+  if (!Number.isFinite(officialSyncTtlMs) || officialSyncTtlMs < 0) {
+    throw new Error(`${PKG}: officialSyncTtlMs must be a finite non-negative number (0 re-reads on every pass)`)
+  }
+  const officialSyncTimeoutMs = config.officialSyncTimeoutMs ?? DEFAULT_OFFICIAL_SYNC_TIMEOUT_MS
+  if (!Number.isFinite(officialSyncTimeoutMs) || officialSyncTimeoutMs < 1000) {
+    throw new Error(`${PKG}: officialSyncTimeoutMs must be a finite number of at least 1000ms`)
+  }
+  // Trailing slashes are stripped rather than rejected: `base/path` and
+  // `base//path` are the same request, and a doubled slash is what a copy-pasted
+  // URL from a browser address bar carries.
+  const officialBaseUrl = String(config.officialBaseUrl ?? DEFAULT_OFFICIAL_BASE_URL).trim().replace(/\/+$/u, '')
+  if (officialBaseUrl.length === 0) {
+    throw new Error(`${PKG}: officialBaseUrl must be a non-empty base URL (turn officialSync off to disable the layer)`)
+  }
+
   const maxProtocolAttempts = boundedInteger(
     config.maxProtocolAttempts,
     DEFAULT_MAX_PROTOCOL_ATTEMPTS,
@@ -395,6 +435,10 @@ export function resolveOptions(config = {}) {
     protocolOverrides,
     models,
     snapshotEnabled: config.snapshotEnabled !== false,
+    officialSync: config.officialSync !== false,
+    officialSyncTtlMs,
+    officialSyncTimeoutMs,
+    officialBaseUrl,
     protocolFallback: config.protocolFallback !== false,
     honorProtocolOverrides: config.honorProtocolOverrides !== false,
     requestImagePixelBudget,
