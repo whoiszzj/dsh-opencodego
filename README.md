@@ -9,6 +9,8 @@
 
 ---
 
+![OpenCode Go 设置页](assets/screenshot-1.png)
+
 ## 安装
 
 ```bash

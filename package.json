@@ -18,7 +18,9 @@
     "scripts/build-client.mjs",
     "cordis.patch.yml",
     "CLAUDE.md",
-    "README.md"
+    "README.md",
+    "assets",
+    "screenshots.json"
   ],
   "dsh": {
     "bundle": {
