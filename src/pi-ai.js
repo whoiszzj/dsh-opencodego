@@ -280,17 +280,49 @@ function appendAssistant(message, messages, toolNames, facts) {
 }
 
 /**
+ * Recover the pi-ai `toolResult` message for one harness tool-role message.
+ *
+ * Harness v4 delivers a tool result as its OWN `role: 'tool'` message —
+ * carrying `toolCallId`, `isError` and a flat content list — not as a
+ * `tool-result` block nested inside a user message. pi-ai's dedicated
+ * `toolResult` role is its slot, and that role's content admits images, so a
+ * tool result that returned a picture survives the round trip instead of
+ * failing the request. Mirrors the official `dsh-llm-pi-ai` `toolResultOf`.
+ *
+ * @param {object} message - the harness tool message.
+ * @param {Map<string, string>} toolNames - call id → tool name, from the assistant turns.
+ * @param {string | object[]} content - converted content; a string collapses to one text block.
+ * @returns {object} the pi-ai toolResult message.
+ */
+function toolResultOf(message, toolNames, content) {
+  return {
+    role: 'toolResult',
+    toolCallId: message.toolCallId,
+    toolName: toolNames.get(message.toolCallId) ?? 'unknown',
+    content: typeof content === 'string'
+      ? [{ type: 'text', text: content || '(no output)' }]
+      : content,
+    isError: message.isError ?? false,
+    timestamp: 0,
+  }
+}
+
+/**
  * Reject image roles that pi-ai cannot replay.
  *
- * An image in an in-history assistant/tool message has no pi-ai slot, and the
- * official adapter refuses it for the same reason. Doing so here means the
- * refusal happens BEFORE any request is built, so the user learns the truth
- * instead of receiving an answer produced without the image.
+ * An image in an in-history `user` message is native to pi-ai, and one that a
+ * tool returned belongs to the `toolResult` role (also image-capable); an
+ * image in any OTHER in-history role (assistant, system, developer) has no
+ * pi-ai slot, and the official adapter refuses it for the same reason. Doing so
+ * here means the refusal happens BEFORE any request is built, so the user
+ * learns the truth instead of receiving an answer produced without the image.
  * @param {readonly object[]} messages - the harness history.
  */
 function assertSupportedImageRoles(messages) {
   for (const message of messages) {
-    if (message.role !== 'user' && contentHasImage(message.content)) {
+    // A tool result now has pi-ai's image-capable `toolResult` role (see
+    // toolResultOf below), so only roles with no pi-ai slot are refused.
+    if (message.role !== 'user' && message.role !== 'tool' && contentHasImage(message.content)) {
       throw new LlmError(
         `opencode-go-native: cannot represent an image in an in-history ${message.role} message`,
         'UNSUPPORTED_CONTENT',
@@ -433,6 +465,12 @@ function textOnlyContext(options, facts) {
       appendAssistant(message, messages, toolNames, facts)
       continue
     }
+    if (message.role === 'tool') {
+      // The v4 tool result: keep call correlation, and do not degrade it into
+      // an ordinary user turn (which loses toolCallId and toolName).
+      messages.push(toolResultOf(message, toolNames, flattenText(message)))
+      continue
+    }
     const text = flattenText(message)
     const results = message.content.filter((block) => block.type === 'tool-result')
     if (text.length > 0 || results.length === 0) {
@@ -505,6 +543,16 @@ async function toPiContextWithImages(options, facts, images) {
     }
     if (message.role === 'assistant') {
       appendAssistant(message, messages, toolNames, facts)
+      continue
+    }
+    if (message.role === 'tool') {
+      // The same slot as the text-only path, but through the attachment service
+      // so a tool-returned image leaves here as a real image block.
+      messages.push(toolResultOf(
+        message,
+        toolNames,
+        await userContent(message.content, requestImages, resolveImageAccess),
+      ))
       continue
     }
     const content = await userContent(
